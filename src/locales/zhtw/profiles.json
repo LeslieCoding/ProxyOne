@@ -1,0 +1,265 @@
+{
+  "page": {
+    "actions": {
+      "updateAll": "更新所有訂閱",
+      "viewRuntimeConfig": "查看執行時訂閱",
+      "reactivate": "重新啟用訂閱",
+      "import": "匯入"
+    },
+    "batch": {
+      "actions": {
+        "delete": "刪除選取訂閱",
+        "selectAll": "全選",
+        "deselectAll": "取消選取",
+        "done": "完成"
+      },
+      "summary": {
+        "selected": "已選取",
+        "items": "項目"
+      },
+      "title": "批次操作"
+    },
+    "importForm": {
+      "placeholder": "訂閱檔網址",
+      "actions": {
+        "paste": "貼上"
+      }
+    },
+    "feedback": {
+      "errors": {
+        "invalidUrl": "無效的訂閱網址，請輸入以 http:// 或 https:// 開頭的位址",
+        "onlyYaml": "僅支援 YAML 檔案",
+        "createFailed": "建立訂閱失敗",
+        "deleteFailed": "刪除訂閱失敗",
+        "enhanceFailed": "重新啟用訂閱失敗",
+        "importFailed": "匯入訂閱失敗",
+        "openFailed": "開啟訂閱失敗",
+        "readFailed": "讀取訂閱失敗",
+        "reorderFailed": "調整訂閱順序失敗",
+        "switchFailed": "切換訂閱失敗",
+        "updateFailed": "更新訂閱失敗"
+      },
+      "notifications": {
+        "importRetry": "訂閱匯入失敗，嘗試使用 Clash 代理匯入",
+        "importFail": "使用 Clash 代理匯入訂閱也失敗",
+        "importNeedsRefresh": "Profile imported but may need manual refresh",
+        "importSuccess": "Profile imported successfully, please restart if not visible",
+        "profileSwitched": "訂閱已切換",
+        "profileReactivated": "訂閱已啟用",
+        "switchBusy": "正在切換配置，請稍後重試",
+        "batchDeleted": "選取的訂閱已成功刪除"
+      },
+      "notices": {
+        "forceRefreshCompleted": "Force refresh completed",
+        "emergencyRefreshFailed": "Emergency refresh failed: {{message}}"
+      },
+      "tooltips": {
+        "forceRefreshStaleData": "訂閱資料異常，點擊強制重新整理"
+      }
+    },
+    "title": "訂閱"
+  },
+  "components": {
+    "card": {
+      "labels": {
+        "clickToImport": "點擊匯入訂閱"
+      }
+    },
+    "fileInput": {
+      "chooseFile": "選擇檔案"
+    },
+    "menu": {
+      "home": "首 頁",
+      "select": "使用",
+      "shareQrCode": "Share QR Code",
+      "editInfo": "編輯資訊",
+      "editFile": "編輯檔案",
+      "editRules": "編輯規則",
+      "editProxies": "編輯節點",
+      "editGroups": "編輯代理組",
+      "extendConfig": "擴充覆寫設定",
+      "extendScript": "擴充指令碼",
+      "openFile": "開啟檔案",
+      "update": "更新",
+      "updateViaProxy": "更新（代理）"
+    },
+    "more": {
+      "global": {
+        "merge": "Global Extend Config",
+        "script": "Global Extend Script"
+      },
+      "chips": {
+        "merge": "Merge",
+        "script": "Script"
+      }
+    },
+    "profileItem": {
+      "tooltips": {
+        "showLast": "Click to show last update time",
+        "showNext": "Click to show next update"
+      },
+      "status": {
+        "lastUpdateFailed": "上次更新失敗",
+        "nextUp": "下次更新",
+        "noSchedule": "沒有排程",
+        "unknown": "未知",
+        "autoUpdateDisabled": "自動更新已停用"
+      }
+    }
+  },
+  "modals": {
+    "profileForm": {
+      "title": {
+        "create": "新增設定檔",
+        "edit": "編輯設定檔"
+      },
+      "fields": {
+        "type": "類型",
+        "description": "描述",
+        "subscriptionUrl": "訂閱網址",
+        "userAgent": "使用者代理",
+        "httpTimeout": "HTTP Request Timeout",
+        "updateInterval": "更新間隔",
+        "useSystemProxy": "使用系統代理更新",
+        "useClashProxy": "使用內核代理更新",
+        "acceptInvalidCerts": "允許無效憑證（危險）",
+        "allowAutoUpdate": "允許自動更新"
+      },
+      "types": {
+        "remote": "遠端",
+        "local": "本機"
+      },
+      "errors": {
+        "typeRequired": "請選擇訂閱類型",
+        "urlRequired": "請輸入訂閱連結",
+        "uidMissing": "缺少訂閱識別碼",
+        "saveFailed": "儲存訂閱失敗"
+      },
+      "feedback": {
+        "notifications": {
+          "creationRetry": "訂閱建立失敗，嘗試使用 Clash 代理建立",
+          "creationSuccess": "使用 Clash 代理建立訂閱成功"
+        }
+      }
+    },
+    "proxiesEditor": {
+      "title": "編輯節點",
+      "placeholders": {
+        "multiUri": "多條網址，請使用換行分隔（支援 Base64 編碼）"
+      },
+      "actions": {
+        "prepend": "新增前置代理節點",
+        "append": "新增後置代理節點"
+      }
+    },
+    "groupsEditor": {
+      "title": "編輯代理組",
+      "errors": {
+        "nameRequired": "代理組名稱為必填",
+        "nameExists": "代理組名稱已存在"
+      },
+      "fields": {
+        "type": "代理組類型",
+        "name": "代理組名稱",
+        "icon": "代理組圖示",
+        "proxies": "使用代理",
+        "provider": "使用代理集合",
+        "healthCheckUrl": "健康檢查網址",
+        "expectedStatus": "預期狀態碼",
+        "interval": "檢查間隔",
+        "maxFailedTimes": "最大失敗次數",
+        "interfaceName": "輸出介面",
+        "routingMark": "路由標記",
+        "filter": "篩選節點",
+        "excludeFilter": "排除節點",
+        "excludeType": "排除節點類型",
+        "includeAll": "包含所有輸出代理、代理集合",
+        "includeAllProxies": "包含所有輸出代理",
+        "includeAllProviders": "包含所有代理集合"
+      },
+      "toggles": {
+        "lazy": "延遲載入",
+        "disableUdp": "停用 UDP",
+        "hidden": "隱藏代理組"
+      },
+      "actions": {
+        "prepend": "新增前置代理組",
+        "append": "新增後置代理組"
+      }
+    },
+    "editor": {
+      "actions": {
+        "format": "格式化文件"
+      },
+      "messages": {
+        "readOnly": "無法在唯讀模式下編輯"
+      }
+    },
+    "confirmDelete": {
+      "title": "確認刪除",
+      "message": "此操作無法復原"
+    },
+    "logViewer": {
+      "title": "指令碼控制台輸出"
+    },
+    "qrViewer": {
+      "title": "Subscription QR Code"
+    },
+    "rulesEditor": {
+      "form": {
+        "labels": {
+          "type": "規則類型",
+          "content": "規則內容",
+          "proxyPolicy": "代理策略"
+        },
+        "toggles": {
+          "noResolve": "跳過 DNS 解析"
+        },
+        "actions": {
+          "prependRule": "新增前置規則",
+          "appendRule": "新增後置規則"
+        },
+        "validation": {
+          "conditionRequired": "規則條件為必填",
+          "invalidRule": "無效規則"
+        }
+      },
+      "ruleTypes": {
+        "DOMAIN": "匹配完整網域 (DOMAIN)",
+        "DOMAIN-SUFFIX": "匹配網域後綴 (DOMAIN-SUFFIX)",
+        "DOMAIN-KEYWORD": "匹配網域關鍵字 (DOMAIN-KEYWORD)",
+        "DOMAIN-REGEX": "匹配網域正規表示式 (DOMAIN-REGEX)",
+        "GEOSITE": "匹配 GeoSite 內的網域 (GEOSITE)",
+        "GEOIP": "匹配 IP 所屬國家代碼 (GEOIP)",
+        "SRC-GEOIP": "匹配來源 IP 所屬國家代碼 (SRC-GEOIP)",
+        "IP-ASN": "匹配 IP 所屬 ASN (IP-ASN)",
+        "SRC-IP-ASN": "匹配來源 IP 所屬 ASN (SRC-IP-ASN)",
+        "IP-CIDR": "匹配 IP 位址範圍 (IP-CIDR)",
+        "IP-CIDR6": "匹配 IP 位址範圍 (IP-CIDR6)",
+        "SRC-IP-CIDR": "匹配來源 IP 位址範圍 (SRC-IP-CIDR)",
+        "IP-SUFFIX": "匹配 IP 後綴範圍 (IP-SUFFIX)",
+        "SRC-IP-SUFFIX": "匹配來源 IP 後綴範圍 (SRC-IP-SUFFIX)",
+        "SRC-PORT": "匹配請求來源連接埠範圍 (SRC-PORT)",
+        "DST-PORT": "匹配請求目標連接埠範圍 (DST-PORT)",
+        "IN-PORT": "匹配傳入連接埠 (IN-PORT)",
+        "DSCP": "匹配 DSCP 標記 (DSCP)",
+        "PROCESS-NAME": "匹配程序名稱 (PROCESS-NAME)",
+        "PROCESS-PATH": "匹配完整程序路徑 (PROCESS-PATH)",
+        "PROCESS-NAME-REGEX": "正規表示式匹配完整程序名稱 (PROCESS-NAME-REGEX)",
+        "PROCESS-PATH-REGEX": "正規表示式匹配完整程序路徑 (PROCESS-PATH-REGEX)",
+        "NETWORK": "匹配 TCP/UDP (NETWORK)",
+        "UID": "匹配 Linux USER ID (UID)",
+        "IN-TYPE": "匹配傳入類型 (IN-TYPE)",
+        "IN-USER": "匹配傳入使用者名稱 (IN-USER)",
+        "IN-NAME": "匹配傳入名稱 (IN-NAME)",
+        "SUB-RULE": "匹配至子規則 (SUB-RULE)",
+        "RULE-SET": "引用規則集合 (RULE-SET)",
+        "AND": "邏輯與 (AND)",
+        "OR": "邏輯或 (OR)",
+        "NOT": "邏輯非 (NOT)",
+        "MATCH": "匹配所有請求 (MATCH)"
+      },
+      "title": "編輯規則"
+    }
+  }
+}

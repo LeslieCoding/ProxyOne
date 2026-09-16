@@ -1,0 +1,52 @@
+{
+  "version": "3.0.0",
+  "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
+  "bundle": {
+    "active": true,
+    "longDescription": "ProxyOne",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico",
+      "icons/liquid-glass.icon"
+    ],
+    "resources": ["resources"],
+    "publisher": "ProxyOne",
+    "externalBin": ["sidecar/verge-mihomo", "sidecar/verge-mihomo-alpha"],
+    "copyright": "GNU General Public License v3.0",
+    "category": "DeveloperTool",
+    "shortDescription": "ProxyOne",
+    "createUpdaterArtifacts": false
+  },
+  "build": {
+    "beforeBuildCommand": "corepack pnpm run web:build",
+    "frontendDist": "../dist",
+    "beforeDevCommand": "pnpm run web:dev",
+    "devUrl": "http://localhost:3000/",
+    "removeUnusedCommands": true
+  },
+  "productName": "ProxyOne",
+  "identifier": "com.proxyone.app",
+  "plugins": {
+    "deep-link": {
+      "desktop": {
+        "schemes": ["clash", "clash-verge"]
+      }
+    }
+  },
+  "app": {
+    "security": {
+      "capabilities": ["desktop-capability", "migrated"],
+      "assetProtocol": {
+        "enable": true,
+        "scope": {
+          "allow": ["**"],
+          "requireLiteralLeadingDot": false
+        }
+      },
+      "csp": null
+    }
+  }
+}
