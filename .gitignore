@@ -21,3 +21,11 @@ AGENTS.md
 .zed
 src-tauri/sidecar
 src-tauri/resources
+
+# installed app files (install dir merged with source)
+/ProxyOne.exe
+/uninstall.exe
+/verge-mihomo.exe
+/verge-mihomo-alpha.exe
+/_guard.vbs
+/resources/
