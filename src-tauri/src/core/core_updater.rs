@@ -59,7 +59,11 @@ pub fn init() {
         imp::spawn_scheduler();
     }
     #[cfg(not(all(windows, target_arch = "x86_64")))]
-    logging!(debug, Type::Core, "Mihomo core auto-update is not supported on this platform");
+    logging!(
+        debug,
+        Type::Core,
+        "Mihomo core auto-update is not supported on this platform"
+    );
 }
 
 #[cfg(all(windows, target_arch = "x86_64"))]
@@ -131,7 +135,11 @@ mod imp {
             return Ok(());
         }
         if clash_core != "verge-mihomo" {
-            logging!(debug, Type::Core, "Core auto-update only manages verge-mihomo, current: {clash_core}");
+            logging!(
+                debug,
+                Type::Core,
+                "Core auto-update only manages verge-mihomo, current: {clash_core}"
+            );
             return Ok(());
         }
         if RUNNING.swap(true, Ordering::SeqCst) {
@@ -314,9 +322,17 @@ mod imp {
 
         if let Err(error) = replace_result {
             if was_sidecar {
-                logging!(warn, Type::Core, "Core update aborted ({error:#}), restarting the previous core");
+                logging!(
+                    warn,
+                    Type::Core,
+                    "Core update aborted ({error:#}), restarting the previous core"
+                );
                 if let Err(start_error) = CoreManager::global().start_core().await {
-                    logging!(error, Type::Core, "Failed to restart core after aborted update: {start_error:#}");
+                    logging!(
+                        error,
+                        Type::Core,
+                        "Failed to restart core after aborted update: {start_error:#}"
+                    );
                 }
             }
             return Err(error);
