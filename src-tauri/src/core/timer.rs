@@ -404,20 +404,18 @@ impl Timer {
         let task_start = std::time::Instant::now();
         logging!(debug, Type::Timer, "Running timer task for profile: {}", uid);
 
+        let is_current = Config::profiles().await.latest_arc().current.as_ref() == Some(uid);
+        logging!(
+            debug,
+            Type::Timer,
+            "Profile {} is current active profile: {}",
+            uid,
+            is_current
+        );
+
         run_timer_profile_update_transition(
             || Self::emit_update_event(uid, true),
-            || async {
-                let is_current = Config::profiles().await.latest_arc().current.as_ref() == Some(uid);
-                logging!(
-                    debug,
-                    Type::Timer,
-                    "Profile {} is current active profile: {}",
-                    uid,
-                    is_current
-                );
-
-                feat::update_profile(uid, None, is_current, false, false).await
-            },
+            || async { feat::update_profile(uid, None, is_current, false, false).await },
             |result| match result {
                 Ok(_) => {
                     logging!(
@@ -433,6 +431,12 @@ impl Timer {
             || Self::emit_update_event(uid, false),
         )
         .await;
+
+        // 订阅刷新后顺带自动重测延迟：前端延迟颜色读取 mihomo 的 delay history，
+        // 这里只需刷新 history 再通知前端重取即可，全程无需手动点击。
+        if is_current {
+            feat::refresh_all_group_delays().await;
+        }
     }
 
     async fn wait_until_resolve_done(max_wait: Duration) {
