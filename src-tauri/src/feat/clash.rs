@@ -190,6 +190,129 @@ pub async fn refresh_all_group_delays() {
     handle::Handle::refresh_clash();
 }
 
+/// 每次刷新后自动把「节点选择」锁定到新加坡/日本系列中延迟最低的节点。
+///
+/// 用户明确只使用 🇸🇬 SG新加坡 / 🇯🇵 JP日本 两个系列（其他系列网络不稳定）。
+/// 为避免节点频繁跳动，仅当满足以下任一条件时才切换：
+/// 当前节点不属于 SG/JP 系列 / 当前节点已超时 / 最优节点比当前快超过 50ms。
+pub async fn auto_select_best_sg_jp_node() {
+    use tauri_plugin_mihomo::models::ProxyType;
+
+    const MAIN_GROUP: &str = "节点选择";
+    const HYSTERESIS_MS: u16 = 50;
+
+    let is_sg_jp = |name: &str| name.contains("SG新加坡") || name.contains("JP日本");
+
+    let mihomo = handle::Handle::mihomo();
+    let proxies = match mihomo.get_proxies().await {
+        Ok(proxies) => proxies,
+        Err(err) => {
+            logging!(error, Type::Timer, "自动选节点：获取代理列表失败: {err}");
+            return;
+        }
+    };
+
+    // 主选择分组：优先「节点选择」，兜底取第一个成员含 SG/JP 节点的 Selector
+    let group = proxies
+        .proxies
+        .get(MAIN_GROUP)
+        .filter(|proxy| proxy.proxy_type == ProxyType::Selector)
+        .or_else(|| {
+            proxies.proxies.values().find(|proxy| {
+                proxy.proxy_type == ProxyType::Selector
+                    && proxy
+                        .all
+                        .as_ref()
+                        .is_some_and(|all| all.iter().any(|name| is_sg_jp(name)))
+            })
+        });
+
+    let Some(group) = group else {
+        logging!(warn, Type::Timer, "自动选节点：找不到主选择分组，跳过");
+        return;
+    };
+
+    let latest_delay = |name: &str| -> Option<u16> {
+        proxies
+            .proxies
+            .get(name)
+            .and_then(|p| p.history.last())
+            .map(|h| h.delay)
+    };
+
+    let Some(all) = group.all.as_ref() else {
+        logging!(warn, Type::Timer, "自动选节点：分组 {} 没有成员列表", group.name);
+        return;
+    };
+
+    // history 里 delay=0 表示超时，只从测活成功的节点里挑最优
+    let best = all
+        .iter()
+        .filter(|name| is_sg_jp(name))
+        .filter_map(|name| {
+            latest_delay(name)
+                .filter(|delay| *delay > 0)
+                .map(|delay| (name.clone(), delay))
+        })
+        .min_by_key(|(_, delay)| *delay);
+
+    let Some((best_name, best_delay)) = best else {
+        logging!(
+            warn,
+            Type::Timer,
+            "自动选节点：新加坡/日本系列当前全部超时，保持现有节点不变"
+        );
+        return;
+    };
+
+    let current = group.now.clone().unwrap_or_default();
+    if current == best_name {
+        logging!(
+            info,
+            Type::Timer,
+            "自动选节点：当前已是最优节点 {} ({}ms)",
+            best_name,
+            best_delay
+        );
+        return;
+    }
+
+    let current_delay = latest_delay(&current).unwrap_or(0);
+    let need_switch =
+        !is_sg_jp(&current) || current_delay == 0 || best_delay.saturating_add(HYSTERESIS_MS) < current_delay;
+
+    if !need_switch {
+        logging!(
+            info,
+            Type::Timer,
+            "自动选节点：当前节点 {} ({}ms) 与最优 {} ({}ms) 差距在阈值内，保持不动",
+            current,
+            current_delay,
+            best_name,
+            best_delay
+        );
+        return;
+    }
+
+    match mihomo.select_node_for_group(&group.name, &best_name).await {
+        Ok(_) => {
+            logging!(
+                info,
+                Type::Timer,
+                "自动选节点：{} 切换 {} -> {} ({}ms，原节点延迟 {}ms)",
+                group.name,
+                current,
+                best_name,
+                best_delay,
+                current_delay
+            );
+            handle::Handle::refresh_clash();
+            tray::Tray::global().update_menu_and_icon().await;
+        }
+        Err(err) => logging!(error, Type::Timer, "自动选节点：切换到 {} 失败: {err}", best_name),
+    }
+}
+
 /// Test delay to a URL through proxy.
 /// HTTPS: measures TLS handshake time. HTTP: measures HEAD round-trip time.
 pub async fn test_delay(url: String) -> anyhow::Result<u32> {

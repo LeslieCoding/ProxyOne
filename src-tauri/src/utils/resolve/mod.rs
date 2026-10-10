@@ -136,6 +136,7 @@ pub(super) async fn init_auto_backup() {
     logging_error!(Type::Setup, AutoBackupManager::global().init().await);
 }
 
+#[allow(clippy::unused_async)]
 async fn init_silent_updater() {
     // Updater plugin is disabled in this private fork; skip silently.
     logging!(info, Type::Setup, "Silent updater disabled (private fork)");

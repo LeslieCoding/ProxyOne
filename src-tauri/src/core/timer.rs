@@ -436,6 +436,8 @@ impl Timer {
         // 这里只需刷新 history 再通知前端重取即可，全程无需手动点击。
         if is_current {
             feat::refresh_all_group_delays().await;
+            // 测速完成后自动锁定到新加坡/日本系列最优节点
+            feat::auto_select_best_sg_jp_node().await;
         }
     }
 

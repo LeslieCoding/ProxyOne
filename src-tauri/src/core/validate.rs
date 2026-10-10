@@ -347,7 +347,7 @@ impl CoreConfigValidator {
         logging!(info, Type::Validate, "验证目录: {}", app_dir_str);
 
         // 使用子进程运行clash验证配置
-        let command = crate::core::core_updater::core_command(&app_handle, clash_core.as_str()).map_err(|error| {
+        let command = crate::core::core_updater::core_command(app_handle, clash_core.as_str()).map_err(|error| {
             anyhow::anyhow!("failed to build validation command for core {clash_core:?}: {error:#}")
         })?;
         let command = command.args(["-t", "-d", app_dir_str, "-f", config_path]);

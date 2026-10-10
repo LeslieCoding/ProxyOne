@@ -1,3 +1,7 @@
+// 静默更新器在本私有分支中被刻意停用（见 utils/resolve/mod.rs 的 init_silent_updater），
+// 代码保留备用，因此整模块豁免 dead_code 检查。
+#![allow(dead_code)]
+
 use crate::{config::Config, singleton, utils::dirs};
 use anyhow::Result;
 use chrono::Utc;

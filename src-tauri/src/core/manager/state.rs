@@ -116,7 +116,7 @@ impl CoreManager {
 
         #[cfg(unix)]
         let previous_mask = unsafe { tauri_plugin_clash_verge_sysinfo::libc::umask(0o077) };
-        let command = crate::core::core_updater::core_command(&app_handle, clash_core.as_str())?;
+        let command = crate::core::core_updater::core_command(app_handle, clash_core.as_str())?;
         let command = command.args([
             "-d",
             dirs::path_to_str(&config_dir)?,
