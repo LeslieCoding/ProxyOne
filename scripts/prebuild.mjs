@@ -2,6 +2,7 @@ import { execFileSync, execSync } from 'child_process'
 import { createHash } from 'crypto'
 import fs from 'fs'
 import fsp from 'fs/promises'
+import { get as httpsGet } from 'node:https'
 import path from 'path'
 import zlib from 'zlib'
 
@@ -211,6 +212,60 @@ const META_MAP = {
 // =======================
 // Fetch latest versions
 // =======================
+// Node 原生 fetch (undici) 会静默忽略 `agent` 选项,代理设置根本不起作用。
+// 有代理时必须走 node:https + HttpsProxyAgent,并手动跟随重定向
+// (GitHub release 资产会 302 到 release-assets.githubusercontent.com)。
+function httpGetBuffer(url, maxRedirects = 5) {
+  const httpProxy =
+    process.env.HTTP_PROXY ||
+    process.env.http_proxy ||
+    process.env.HTTPS_PROXY ||
+    process.env.https_proxy
+  if (!httpProxy) {
+    return fetch(url, { method: 'GET', redirect: 'follow' }).then(
+      async (response) => ({
+        ok: response.ok,
+        status: response.status,
+        buffer: Buffer.from(await response.arrayBuffer()),
+      }),
+    )
+  }
+  return new Promise((resolve, reject) => {
+    const req = httpsGet(
+      url,
+      { agent: new HttpsProxyAgent(httpProxy) },
+      (res) => {
+        if (
+          res.statusCode >= 300 &&
+          res.statusCode < 400 &&
+          res.headers.location
+        ) {
+          res.resume()
+          if (maxRedirects <= 0) {
+            return reject(new Error(`too many redirects for ${url}`))
+          }
+          const next = new URL(res.headers.location, url).href
+          return resolve(httpGetBuffer(next, maxRedirects - 1))
+        }
+        const chunks = []
+        res.on('data', (chunk) => chunks.push(chunk))
+        res.on('end', () =>
+          resolve({
+            ok: res.statusCode >= 200 && res.statusCode < 300,
+            status: res.statusCode,
+            buffer: Buffer.concat(chunks),
+          }),
+        )
+        res.on('error', reject)
+      },
+    )
+    req.setTimeout(60000, () =>
+      req.destroy(new Error(`timeout fetching ${url}`)),
+    )
+    req.on('error', reject)
+  })
+}
+
 async function getLatestAlphaVersion() {
   if (!FORCE) {
     const cached = await getCachedVersion('META_ALPHA_VERSION')
@@ -219,24 +274,14 @@ async function getLatestAlphaVersion() {
       return
     }
   }
-  const options = {}
-  const httpProxy =
-    process.env.HTTP_PROXY ||
-    process.env.http_proxy ||
-    process.env.HTTPS_PROXY ||
-    process.env.https_proxy
-  if (httpProxy) options.agent = new HttpsProxyAgent(httpProxy)
 
   try {
-    const response = await fetch(META_ALPHA_VERSION_URL, {
-      ...options,
-      method: 'GET',
-    })
+    const response = await httpGetBuffer(META_ALPHA_VERSION_URL)
     if (!response.ok)
       throw new Error(
         `Failed to fetch ${META_ALPHA_VERSION_URL}: ${response.status}`,
       )
-    META_ALPHA_VERSION = (await response.text()).trim()
+    META_ALPHA_VERSION = response.buffer.toString().trim()
     log_info(`Latest alpha version: ${META_ALPHA_VERSION}`)
     await setCachedVersion('META_ALPHA_VERSION', META_ALPHA_VERSION)
   } catch (err) {
@@ -253,22 +298,12 @@ async function getLatestReleaseVersion() {
       return
     }
   }
-  const options = {}
-  const httpProxy =
-    process.env.HTTP_PROXY ||
-    process.env.http_proxy ||
-    process.env.HTTPS_PROXY ||
-    process.env.https_proxy
-  if (httpProxy) options.agent = new HttpsProxyAgent(httpProxy)
 
   try {
-    const response = await fetch(META_VERSION_URL, {
-      ...options,
-      method: 'GET',
-    })
+    const response = await httpGetBuffer(META_VERSION_URL)
     if (!response.ok)
       throw new Error(`Failed to fetch ${META_VERSION_URL}: ${response.status}`)
-    META_VERSION = (await response.text()).trim()
+    META_VERSION = response.buffer.toString().trim()
     log_info(`Latest release version: ${META_VERSION}`)
     await setCachedVersion('META_VERSION', META_VERSION)
   } catch (err) {
@@ -320,28 +355,15 @@ function clashMeta() {
 // download helper (增强：status + magic bytes)
 // =======================
 async function downloadFile(url, outPath) {
-  const options = {}
-  const httpProxy =
-    process.env.HTTP_PROXY ||
-    process.env.http_proxy ||
-    process.env.HTTPS_PROXY ||
-    process.env.https_proxy
-  if (httpProxy) options.agent = new HttpsProxyAgent(httpProxy)
-
-  const response = await fetch(url, {
-    ...options,
-    method: 'GET',
-    headers: { 'Content-Type': 'application/octet-stream' },
-  })
+  const response = await httpGetBuffer(url)
   if (!response.ok) {
-    const body = await response.text().catch(() => '')
     // 将 body 写到文件以便排查（可通过临时目录查看）
     await fsp.mkdir(path.dirname(outPath), { recursive: true })
-    await fsp.writeFile(outPath, body)
+    await fsp.writeFile(outPath, response.buffer)
     throw new Error(`Failed to download ${url}: status ${response.status}`)
   }
 
-  const buf = Buffer.from(await response.arrayBuffer())
+  const buf = response.buffer
   await fsp.mkdir(path.dirname(outPath), { recursive: true })
 
   // 简单 magic 字节检查

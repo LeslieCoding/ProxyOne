@@ -292,7 +292,9 @@ mod imp {
                     warn,
                     Type::Core,
                     "Core update download attempt {attempt} failed, retrying: {}",
-                    last_error.as_ref().map_or_else(|| "unknown".to_owned(), |e| format!("{e:#}"))
+                    last_error
+                        .as_ref()
+                        .map_or_else(|| "unknown".to_owned(), |e| format!("{e:#}"))
                 );
                 tokio::time::sleep(Duration::from_secs(2)).await;
             }
