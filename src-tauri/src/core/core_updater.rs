@@ -66,6 +66,18 @@ pub fn init() {
     );
 }
 
+/// Manually trigger a core update check (used by the settings dialog's upgrade button).
+///
+/// Unlike the mihomo core's own `/upgrade` API (direct GitHub fetch with a 5s timeout,
+/// which fails behind the GFW), this goes through the system proxy like the scheduler.
+/// Returns `Some(tag)` when an update was installed, `None` when already up to date.
+pub async fn update_now() -> Result<Option<String>> {
+    #[cfg(all(windows, target_arch = "x86_64"))]
+    return imp::update_now().await;
+    #[cfg(not(all(windows, target_arch = "x86_64")))]
+    anyhow::bail!("mihomo core auto-update is not supported on this platform")
+}
+
 #[cfg(all(windows, target_arch = "x86_64"))]
 mod imp {
     use super::{cores_dir, override_core_path};
@@ -142,9 +154,25 @@ mod imp {
             );
             return Ok(());
         }
+        check_and_update().await.map(|_| ())
+    }
+
+    /// Manual trigger from the UI: ignores the auto-update toggle but still only
+    /// manages the `verge-mihomo` core.
+    pub async fn update_now() -> Result<Option<String>> {
+        let verge = Config::verge().await;
+        let clash_core = verge.latest_arc().get_valid_clash_core();
+        if clash_core != "verge-mihomo" {
+            anyhow::bail!("core auto-update only manages verge-mihomo, current: {clash_core}");
+        }
+        check_and_update().await
+    }
+
+    /// Returns `Some(tag)` when an update was installed, `None` when already up to date.
+    async fn check_and_update() -> Result<Option<String>> {
         if RUNNING.swap(true, Ordering::SeqCst) {
             logging!(debug, Type::Core, "Core auto-update already running, skipping");
-            return Ok(());
+            anyhow::bail!("a core update is already in progress");
         }
         defer! {
             RUNNING.store(false, Ordering::SeqCst);
@@ -161,7 +189,7 @@ mod imp {
                 "Mihomo core is up to date ({current}), latest release is {}",
                 release.tag_name
             );
-            return Ok(());
+            return Ok(None);
         }
 
         logging!(
@@ -172,7 +200,8 @@ mod imp {
             baseline.as_deref().unwrap_or("unknown")
         );
         stage_and_verify(&release).await?;
-        commit_staged(&release.tag_name).await
+        commit_staged(&release.tag_name).await?;
+        Ok(Some(release.tag_name))
     }
 
     async fn fetch_latest_release() -> Result<Release> {
@@ -238,13 +267,37 @@ mod imp {
         let client = NetworkManager::new()
             .create_request(ProxyType::System, Some(300), None, false)
             .await?;
-        let bytes = client
-            .get(&asset.browser_download_url)
-            .send()
-            .await?
-            .error_for_status()?
-            .bytes()
-            .await?;
+        // GitHub asset downloads through the proxy are flaky (aborted TLS streams);
+        // retry the whole download a few times instead of waiting a day for the next cycle.
+        let mut last_error: Option<anyhow::Error> = None;
+        let mut bytes = None;
+        for attempt in 1..=3u32 {
+            match client
+                .get(&asset.browser_download_url)
+                .send()
+                .await
+                .and_then(|resp| resp.error_for_status())
+            {
+                Ok(resp) => match resp.bytes().await {
+                    Ok(body) => {
+                        bytes = Some(body);
+                        break;
+                    }
+                    Err(error) => last_error = Some(error.into()),
+                },
+                Err(error) => last_error = Some(error.into()),
+            }
+            if attempt < 3 {
+                logging!(
+                    warn,
+                    Type::Core,
+                    "Core update download attempt {attempt} failed, retrying: {}",
+                    last_error.as_ref().map_or_else(|| "unknown".to_owned(), |e| format!("{e:#}"))
+                );
+                tokio::time::sleep(Duration::from_secs(2)).await;
+            }
+        }
+        let bytes = bytes.ok_or_else(|| last_error.unwrap_or_else(|| anyhow::anyhow!("download failed")))?;
         logging!(
             info,
             Type::Core,
@@ -314,11 +367,23 @@ mod imp {
             CoreManager::global().stop_core().await?;
         }
 
-        let replace_result = (|| -> Result<()> {
-            std::fs::rename(&staged, &target).context("failed to replace the managed core binary")?;
-            std::fs::write(cores.join(VERSION_FILE_NAME), tag).context("failed to record the core version")?;
-            Ok(())
-        })();
+        // A freshly killed sidecar can keep the exe file locked for a moment
+        // (observed: os error 5 immediately after stop_core returns), so retry briefly.
+        let replace_result = {
+            let mut attempt = 0u32;
+            loop {
+                let result = (|| -> Result<()> {
+                    std::fs::rename(&staged, &target).context("failed to replace the managed core binary")?;
+                    std::fs::write(cores.join(VERSION_FILE_NAME), tag).context("failed to record the core version")?;
+                    Ok(())
+                })();
+                attempt += 1;
+                if result.is_ok() || attempt >= 20 {
+                    break result;
+                }
+                tokio::time::sleep(Duration::from_millis(300)).await;
+            }
+        };
 
         if let Err(error) = replace_result {
             if was_sidecar {

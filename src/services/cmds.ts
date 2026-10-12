@@ -212,6 +212,10 @@ export async function restartCore() {
   return invoke<void>('restart_core')
 }
 
+export async function updateClashCore() {
+  return invoke<string | null>('update_clash_core')
+}
+
 export async function restartApp() {
   return invoke<void>('restart_app')
 }

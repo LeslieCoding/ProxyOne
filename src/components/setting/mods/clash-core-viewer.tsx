@@ -15,12 +15,12 @@ import { useLockFn } from 'ahooks'
 import type { Ref } from 'react'
 import { useImperativeHandle, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { closeAllConnections, upgradeCore } from 'tauri-plugin-mihomo-api'
+import { closeAllConnections } from 'tauri-plugin-mihomo-api'
 
 import { BaseDialog, DialogRef } from '@/components/base'
 import { useClash, useClashInfo } from '@/hooks/use-clash'
 import { useVerge } from '@/hooks/use-verge'
-import { changeClashCore, restartCore } from '@/services/cmds'
+import { changeClashCore, restartCore, updateClashCore } from '@/services/cmds'
 import { showNotice } from '@/services/notice-service'
 
 const VALID_CORE = [
@@ -97,19 +97,20 @@ export function ClashCoreViewer({ ref }: { ref?: Ref<DialogRef> }) {
   const onUpgrade = useLockFn(async () => {
     try {
       setUpgrading(true)
-      await upgradeCore()
+      // 走 ProxyOne 自己的更新器（系统代理），内核自带 /upgrade 直连 GitHub 必超时
+      const newTag = await updateClashCore()
       setUpgrading(false)
       mutateVersion()
       showNotice.success(
-        t('settings.feedback.notifications.clash.versionUpdated'),
+        t(
+          newTag
+            ? 'settings.feedback.notifications.clash.versionUpdated'
+            : 'settings.feedback.notifications.clash.alreadyLatestVersion',
+        ),
       )
     } catch (err: any) {
       setUpgrading(false)
-      const errMsg = err?.response?.data?.message ?? String(err)
-      const showMsg = errMsg.includes('already using latest version')
-        ? t('settings.feedback.notifications.clash.alreadyLatestVersion')
-        : errMsg
-      showNotice.info(showMsg)
+      showNotice.error(err)
     }
   })
 

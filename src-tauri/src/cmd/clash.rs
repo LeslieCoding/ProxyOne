@@ -132,6 +132,22 @@ pub async fn restart_core() -> CmdResult {
     result
 }
 
+/// 手动触发 mihomo 内核更新（设置页"升级"按钮）
+///
+/// 替代内核自带 `/upgrade` API（直连 GitHub + 5 秒超时，GFW 下必超时），
+/// 走系统代理。返回 `Some(tag)` 表示已更新，`None` 表示已是最新。
+#[tauri::command]
+pub async fn update_clash_core() -> CmdResult<Option<String>> {
+    let result = crate::core::core_updater::update_now()
+        .await
+        .map(|tag| tag.map(Into::into))
+        .with_error_code("CORE_UPDATE_FAILED");
+    if result.as_ref().is_ok_and(Option::is_some) {
+        handle::Handle::refresh_clash();
+    }
+    result
+}
+
 /// 测试URL延迟
 #[tauri::command]
 pub async fn test_delay(url: String) -> CmdResult<u32> {

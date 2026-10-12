@@ -20,6 +20,6 @@ pub mod updater;
 pub mod validate;
 pub mod win_uwp;
 
-pub use self::{manager::CoreManager, timer::Timer};
 #[allow(unused_imports)]
 pub use self::updater::SilentUpdater;
+pub use self::{manager::CoreManager, timer::Timer};
