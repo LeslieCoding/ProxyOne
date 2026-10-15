@@ -190,11 +190,12 @@ pub async fn refresh_all_group_delays() {
     handle::Handle::refresh_clash();
 }
 
-/// 每次刷新后自动把「节点选择」锁定到新加坡/日本系列中延迟最低的节点。
+/// 每次刷新后自动把「节点选择」锁定到新加坡/日本系列中延迟最低的 Hysteria 节点。
 ///
-/// 用户明确只使用 🇸🇬 SG新加坡 / 🇯🇵 JP日本 两个系列（其他系列网络不稳定）。
+/// 用户明确只使用 🇸🇬 SG新加坡 / 🇯🇵 JP日本 两个系列（其他系列网络不稳定），
+/// 且只使用其中的 Hysteria/Hysteria2 协议节点（AnyTLS 节点实测网络差，排除）。
 /// 为避免节点频繁跳动，仅当满足以下任一条件时才切换：
-/// 当前节点不属于 SG/JP 系列 / 当前节点已超时 / 最优节点比当前快超过 50ms。
+/// 当前节点不是 SG/JP Hysteria 节点 / 当前节点已超时 / 最优节点比当前快超过 50ms。
 pub async fn auto_select_best_sg_jp_node() {
     use tauri_plugin_mihomo::models::ProxyType;
 
@@ -240,15 +241,24 @@ pub async fn auto_select_best_sg_jp_node() {
             .map(|h| h.delay)
     };
 
+    // SG/JP 系列 + Hysteria 协议双过滤：AnyTLS 节点（-A 系列）实测网络差，排除
+    let is_target_node = |name: &str| {
+        is_sg_jp(name)
+            && proxies
+                .proxies
+                .get(name)
+                .is_some_and(|p| matches!(p.proxy_type, ProxyType::Hysteria | ProxyType::Hysteria2))
+    };
+
     let Some(all) = group.all.as_ref() else {
         logging!(warn, Type::Timer, "自动选节点：分组 {} 没有成员列表", group.name);
         return;
     };
 
-    // history 里 delay=0 表示超时，只从测活成功的节点里挑最优
+    // history 里 delay=0 表示超时，只从测活成功的目标节点里挑最优
     let best = all
         .iter()
-        .filter(|name| is_sg_jp(name))
+        .filter(|name| is_target_node(name))
         .filter_map(|name| {
             latest_delay(name)
                 .filter(|delay| *delay > 0)
@@ -260,7 +270,7 @@ pub async fn auto_select_best_sg_jp_node() {
         logging!(
             warn,
             Type::Timer,
-            "自动选节点：新加坡/日本系列当前全部超时，保持现有节点不变"
+            "自动选节点：新加坡/日本 Hysteria 系列当前全部超时或无可用节点，保持现有节点不变"
         );
         return;
     };
@@ -278,8 +288,9 @@ pub async fn auto_select_best_sg_jp_node() {
     }
 
     let current_delay = latest_delay(&current).unwrap_or(0);
-    let need_switch =
-        !is_sg_jp(&current) || current_delay == 0 || best_delay.saturating_add(HYSTERESIS_MS) < current_delay;
+    let need_switch = !is_target_node(&current)
+        || current_delay == 0
+        || best_delay.saturating_add(HYSTERESIS_MS) < current_delay;
 
     if !need_switch {
         logging!(

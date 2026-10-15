@@ -40,11 +40,7 @@ pub fn use_merge(merge: &Mapping, config: Mapping) -> Mapping {
     for &(special_key, field, is_prepend) in SEQ_KEYS {
         if let Some(value) = merge.remove(special_key) {
             let Some(seq) = value.as_sequence().cloned() else {
-                logging!(
-                    warn,
-                    Type::Core,
-                    "merge key `{special_key}` is not a sequence, ignored"
-                );
+                logging!(warn, Type::Core, "merge key `{special_key}` is not a sequence, ignored");
                 continue;
             };
             if seq.is_empty() {
@@ -54,8 +50,20 @@ pub fn use_merge(merge: &Mapping, config: Mapping) -> Mapping {
             match (entry, is_prepend) {
                 (Some((_, map)), true) => map.prepend = seq,
                 (Some((_, map)), false) => map.append = seq,
-                (None, true) => seq_maps.push((field, SeqMap { prepend: seq, ..Default::default() })),
-                (None, false) => seq_maps.push((field, SeqMap { append: seq, ..Default::default() })),
+                (None, true) => seq_maps.push((
+                    field,
+                    SeqMap {
+                        prepend: seq,
+                        ..Default::default()
+                    },
+                )),
+                (None, false) => seq_maps.push((
+                    field,
+                    SeqMap {
+                        append: seq,
+                        ..Default::default()
+                    },
+                )),
             }
         }
     }
