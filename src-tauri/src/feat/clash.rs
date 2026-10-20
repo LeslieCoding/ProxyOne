@@ -190,19 +190,18 @@ pub async fn refresh_all_group_delays() {
     handle::Handle::refresh_clash();
 }
 
-/// 每次刷新后自动把「节点选择」锁定到新加坡/日本系列中延迟最低的 Hysteria 节点。
+/// 每次刷新后自动把「节点选择」锁定到延迟最低的 Hysteria 节点。
 ///
-/// 用户明确只使用 🇸🇬 SG新加坡 / 🇯🇵 JP日本 两个系列（其他系列网络不稳定），
-/// 且只使用其中的 Hysteria/Hysteria2 协议节点（AnyTLS 节点实测网络差，排除）。
+/// 2026-10-21 用户改判：不再局限于 🇸🇬 SG新加坡 / 🇯🇵 JP日本 系列，
+/// 任何地区系列均可，只按 Hysteria/Hysteria2 协议过滤（AnyTLS 等其他协议实测慢，排除），
+/// 在测活节点中选延迟最低者。
 /// 为避免节点频繁跳动，仅当满足以下任一条件时才切换：
-/// 当前节点不是 SG/JP Hysteria 节点 / 当前节点已超时 / 最优节点比当前快超过 50ms。
-pub async fn auto_select_best_sg_jp_node() {
+/// 当前节点不是 Hysteria 节点 / 当前节点已超时 / 最优节点比当前快超过 50ms。
+pub async fn auto_select_best_hysteria_node() {
     use tauri_plugin_mihomo::models::ProxyType;
 
     const MAIN_GROUP: &str = "节点选择";
     const HYSTERESIS_MS: u16 = 50;
-
-    let is_sg_jp = |name: &str| name.contains("SG新加坡") || name.contains("JP日本");
 
     let mihomo = handle::Handle::mihomo();
     let proxies = match mihomo.get_proxies().await {
@@ -213,7 +212,15 @@ pub async fn auto_select_best_sg_jp_node() {
         }
     };
 
-    // 主选择分组：优先「节点选择」，兜底取第一个成员含 SG/JP 节点的 Selector
+    // 只按协议过滤：AnyTLS 等其他协议实测慢，排除；地区不限
+    let is_target_node = |name: &str| {
+        proxies
+            .proxies
+            .get(name)
+            .is_some_and(|p| matches!(p.proxy_type, ProxyType::Hysteria | ProxyType::Hysteria2))
+    };
+
+    // 主选择分组：优先「节点选择」，兜底取第一个成员含 Hysteria 节点的 Selector
     let group = proxies
         .proxies
         .get(MAIN_GROUP)
@@ -224,7 +231,7 @@ pub async fn auto_select_best_sg_jp_node() {
                     && proxy
                         .all
                         .as_ref()
-                        .is_some_and(|all| all.iter().any(|name| is_sg_jp(name)))
+                        .is_some_and(|all| all.iter().any(|name| is_target_node(name)))
             })
         });
 
@@ -239,15 +246,6 @@ pub async fn auto_select_best_sg_jp_node() {
             .get(name)
             .and_then(|p| p.history.last())
             .map(|h| h.delay)
-    };
-
-    // SG/JP 系列 + Hysteria 协议双过滤：AnyTLS 节点（-A 系列）实测网络差，排除
-    let is_target_node = |name: &str| {
-        is_sg_jp(name)
-            && proxies
-                .proxies
-                .get(name)
-                .is_some_and(|p| matches!(p.proxy_type, ProxyType::Hysteria | ProxyType::Hysteria2))
     };
 
     let Some(all) = group.all.as_ref() else {
@@ -270,7 +268,7 @@ pub async fn auto_select_best_sg_jp_node() {
         logging!(
             warn,
             Type::Timer,
-            "自动选节点：新加坡/日本 Hysteria 系列当前全部超时或无可用节点，保持现有节点不变"
+            "自动选节点：Hysteria 节点当前全部超时或无可用节点，保持现有节点不变"
         );
         return;
     };
@@ -288,9 +286,8 @@ pub async fn auto_select_best_sg_jp_node() {
     }
 
     let current_delay = latest_delay(&current).unwrap_or(0);
-    let need_switch = !is_target_node(&current)
-        || current_delay == 0
-        || best_delay.saturating_add(HYSTERESIS_MS) < current_delay;
+    let need_switch =
+        !is_target_node(&current) || current_delay == 0 || best_delay.saturating_add(HYSTERESIS_MS) < current_delay;
 
     if !need_switch {
         logging!(
