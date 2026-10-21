@@ -152,10 +152,10 @@ pub async fn refresh_all_group_delays() {
         .proxies
         .values()
         .filter(|proxy| {
-            matches!(
-                proxy.proxy_type,
-                ProxyType::Selector | ProxyType::URLTest | ProxyType::Fallback | ProxyType::LoadBalance
-            ) && !proxy.hidden.unwrap_or(false)
+            // 只测 Selector：对 URLTest/Fallback 发组测速会清掉用户手点的 fixed，
+            // 而这些自动组本身有自测间隔，不需要我们代测
+            matches!(proxy.proxy_type, ProxyType::Selector)
+                && !proxy.hidden.unwrap_or(false)
         })
         .map(|proxy| proxy.name.clone())
         .collect();
@@ -188,6 +188,28 @@ pub async fn refresh_all_group_delays() {
 
     logging!(info, Type::Timer, "自动延迟测试完成，测试节点总数: {}", tested_nodes);
     handle::Handle::refresh_clash();
+}
+
+/// 读取当前订阅里某组被用户手动钉住的节点名（无钉住返回 None）。
+/// 钉住标记由 record_selected_node 在用户手动选择（界面/托盘）时写入 profiles.yaml。
+async fn current_pinned_node(group_name: &str) -> Option<String> {
+    let profiles = Config::profiles().await.data_arc();
+    let uid = profiles.current.as_ref()?;
+    let item = profiles
+        .items
+        .as_ref()?
+        .iter()
+        .find(|item| item.uid.as_ref() == Some(uid))?;
+    let entry = item
+        .selected
+        .as_ref()?
+        .iter()
+        .find(|entry| entry.name.as_deref() == Some(group_name))?;
+    if entry.pinned.unwrap_or(false) {
+        entry.now.clone().filter(|name| !name.is_empty())
+    } else {
+        None
+    }
 }
 
 /// 每次刷新后自动把「节点选择」锁定到延迟最低的 Hysteria 节点。
@@ -300,6 +322,50 @@ pub async fn auto_select_best_hysteria_node() {
             best_delay
         );
         return;
+    }
+
+    // 手动钉住优先（2026-10-21 用户规则）：用户在「节点选择」手选过节点后，
+    // 以用户选择为准，自动逻辑不得覆盖。钉住节点仍在组成员中且测活成功 ->
+    // 完全不动（当前不在钉住节点上的漂移情形则拉回）；钉住节点消失或超时 ->
+    // 解除钉住，本轮起交回自动逻辑。
+    if let Some(pinned) = current_pinned_node(&group.name).await {
+        let pinned_alive = all.iter().any(|name| name.as_str() == pinned.as_str())
+            && latest_delay(&pinned).is_some_and(|delay| delay > 0);
+        if pinned_alive {
+            if current.as_str() == pinned.as_str() {
+                logging!(
+                    info,
+                    Type::Timer,
+                    "自动选节点：节点 {} 为用户手动钉住，跳过",
+                    pinned
+                );
+                return;
+            }
+            match mihomo.select_node_for_group(&group.name, &pinned).await {
+                Ok(_) => {
+                    logging!(
+                        info,
+                        Type::Timer,
+                        "自动选节点：检测到漂移，拉回手动钉住节点 {} -> {}",
+                        current,
+                        pinned
+                    );
+                    handle::Handle::refresh_clash();
+                    tray::Tray::global().update_menu_and_icon().await;
+                }
+                Err(err) => {
+                    logging!(error, Type::Timer, "自动选节点：拉回钉住节点失败: {err}")
+                }
+            }
+            return;
+        }
+        logging!(
+            info,
+            Type::Timer,
+            "自动选节点：手动钉住的节点 {} 已消失或超时，解除钉住并交回自动",
+            pinned
+        );
+        let _ = crate::config::profiles::clear_selection_pin(&group.name).await;
     }
 
     match mihomo.select_node_for_group(&group.name, &best_name).await {

@@ -67,6 +67,10 @@ pub struct PrfItem {
 pub struct PrfSelected {
     pub name: Option<String>,
     pub now: Option<String>,
+    /// 用户手动钉住标记：true = 用户在界面上亲手选的这个节点，自动选节点逻辑不得覆盖；
+    /// false/None = 自动逻辑可接管。手动选择「自动选择」时置 false（交还自动）。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pinned: Option<bool>,
 }
 
 #[derive(Default, Debug, Clone, Copy, Deserialize, Serialize)]

@@ -746,6 +746,7 @@ fn reconcile_selected_nodes(
                 plan.selected.push(PrfSelected {
                     name: Some(group_name.clone()),
                     now: Some(preferred_node.into()),
+                    pinned: None,
                 });
             } else {
                 plan.repaired_count += 1;
@@ -780,6 +781,7 @@ fn reconcile_selected_nodes(
             plan.selected.push(PrfSelected {
                 name: Some(group_name.clone()),
                 now: Some(current_node.into()),
+                pinned: None,
             });
         }
     }
@@ -920,20 +922,24 @@ pub async fn record_selected_node(group_name: &str, node: &str) -> Result<()> {
                 return Ok((profiles, false));
             };
 
+            // 手动选择即钉住：选了「自动选择」等于交还给自动逻辑
+            let pin = Some(node.as_str() != "自动选择");
             let mut selected = item.selected.clone().unwrap_or_default();
             match selected
                 .iter_mut()
                 .find(|entry| entry.name.as_ref() == Some(&group_name))
             {
                 Some(entry) => {
-                    if entry.now.as_ref() == Some(&node) {
+                    if entry.now.as_ref() == Some(&node) && entry.pinned == pin {
                         return Ok((profiles, false));
                     }
                     entry.now = Some(node);
+                    entry.pinned = pin;
                 }
                 None => selected.push(PrfSelected {
                     name: Some(group_name),
                     now: Some(node),
+                    pinned: pin,
                 }),
             }
             item.selected = Some(selected);
@@ -947,6 +953,44 @@ pub async fn record_selected_node(group_name: &str, node: &str) -> Result<()> {
         supersede_selected_activation();
         handle::Handle::refresh_profiles();
     }
+    Ok(())
+}
+
+/// 解除某组的手动钉住（钉住节点消失或超时时由自动选节点逻辑调用，交回自动接管）。
+pub async fn clear_selection_pin(group_name: &str) -> Result<()> {
+    let group_name = String::from(group_name);
+    Config::profiles()
+        .await
+        .with_data_modify(move |mut profiles| async move {
+            let Some(current) = profiles.current.clone() else {
+                return Ok((profiles, false));
+            };
+            let Some(item) = profiles
+                .items
+                .as_mut()
+                .and_then(|items| items.iter_mut().find(|item| item.uid.as_ref() == Some(&current)))
+            else {
+                return Ok((profiles, false));
+            };
+            let Some(entry) = item
+                .selected
+                .as_mut()
+                .and_then(|selected| {
+                    selected
+                        .iter_mut()
+                        .find(|entry| entry.name.as_ref() == Some(&group_name))
+                })
+            else {
+                return Ok((profiles, false));
+            };
+            if entry.pinned != Some(true) {
+                return Ok((profiles, false));
+            }
+            entry.pinned = Some(false);
+            profiles.save_file().await?;
+            Ok((profiles, true))
+        })
+        .await?;
     Ok(())
 }
 
@@ -1313,6 +1357,7 @@ mod tests {
         PrfSelected {
             name: Some(group.into()),
             now: Some(node.into()),
+            pinned: None,
         }
     }
 
@@ -1387,10 +1432,12 @@ mod tests {
             PrfSelected {
                 name: Some("Proxy".into()),
                 now: None,
+                pinned: None,
             },
             PrfSelected {
                 name: None,
                 now: Some("Node A".into()),
+                pinned: None,
             },
         ];
 
