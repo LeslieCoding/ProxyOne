@@ -26,6 +26,10 @@ rpath = false
 [profile.release.package.clash-verge]
 codegen-units = 16
 
+# same crash compiling the windows crate with CU=1
+[profile.release.package.windows]
+codegen-units = 16
+
 [profile.dev]
 incremental = true
 codegen-units = 64
