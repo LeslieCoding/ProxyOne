@@ -154,8 +154,7 @@ pub async fn refresh_all_group_delays() {
         .filter(|proxy| {
             // 只测 Selector：对 URLTest/Fallback 发组测速会清掉用户手点的 fixed，
             // 而这些自动组本身有自测间隔，不需要我们代测
-            matches!(proxy.proxy_type, ProxyType::Selector)
-                && !proxy.hidden.unwrap_or(false)
+            matches!(proxy.proxy_type, ProxyType::Selector) && !proxy.hidden.unwrap_or(false)
         })
         .map(|proxy| proxy.name.clone())
         .collect();
@@ -333,12 +332,7 @@ pub async fn auto_select_best_hysteria_node() {
             && latest_delay(&pinned).is_some_and(|delay| delay > 0);
         if pinned_alive {
             if current.as_str() == pinned.as_str() {
-                logging!(
-                    info,
-                    Type::Timer,
-                    "自动选节点：节点 {} 为用户手动钉住，跳过",
-                    pinned
-                );
+                logging!(info, Type::Timer, "自动选节点：节点 {} 为用户手动钉住，跳过", pinned);
                 return;
             }
             match mihomo.select_node_for_group(&group.name, &pinned).await {

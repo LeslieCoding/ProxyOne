@@ -972,15 +972,11 @@ pub async fn clear_selection_pin(group_name: &str) -> Result<()> {
             else {
                 return Ok((profiles, false));
             };
-            let Some(entry) = item
-                .selected
-                .as_mut()
-                .and_then(|selected| {
-                    selected
-                        .iter_mut()
-                        .find(|entry| entry.name.as_ref() == Some(&group_name))
-                })
-            else {
+            let Some(entry) = item.selected.as_mut().and_then(|selected| {
+                selected
+                    .iter_mut()
+                    .find(|entry| entry.name.as_ref() == Some(&group_name))
+            }) else {
                 return Ok((profiles, false));
             };
             if entry.pinned != Some(true) {
