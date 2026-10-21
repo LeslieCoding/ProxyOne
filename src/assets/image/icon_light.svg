@@ -1,26 +1,17 @@
 <svg xmlns="http://www.w3.org/2000/svg" version="1.1" viewBox="0 0 512 512" width="512" height="512">
   <defs>
-    <linearGradient id="Gradient2" x1="0%" y1="0%" x2="100%" y2="100%">
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
       <stop offset="0%" stop-color="#E60012" />
-      <stop offset="80%" stop-color="#C5000F" />
-      <stop offset="100%" stop-color="#C5000F" />
+      <stop offset="100%" stop-color="#B0000E" />
     </linearGradient>
+    <filter id="soft" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="8" />
+    </filter>
   </defs>
-  <rect x="16" y="16" width="480" height="480" rx="120" ry="120" fill="url(#Gradient2)" />
-  <path d="M 256 88
-           A 168 168 0 1 0 424 256"
-        fill="none" stroke="#FFFFFF" stroke-width="34" stroke-linecap="round" opacity="0.55" />
-  <path d="M 132 244
-           L 388 148
-           C 400 144 408 152 404 164
-           L 328 372
-           C 323 385 308 387 301 376
-           L 262 308
-           L 206 340
-           C 196 346 184 339 184 328
-           L 184 284
-           L 140 264
-           C 128 259 126 248 132 244 Z"
-        fill="#FFFFFF" />
-  <path d="M 262 308 L 388 148 L 184 284 Z" fill="#E60012" opacity="0.18" />
+  <rect x="16" y="16" width="480" height="480" rx="118" ry="118" fill="url(#bg)" />
+  <g>
+    <polygon points="291.4,426.4 432.4,73.6 79.6,214.6 161.8,297.1 338.3,167.7 208.9,344.2" transform="translate(0,10)" fill="#3C0004" opacity="0.28" filter="url(#soft)" />
+    <polygon points="79.6,214.6 432.4,73.6 338.3,167.7 161.8,297.1" fill="#FFFFFF" />
+    <polygon points="208.9,344.2 338.3,167.7 432.4,73.6 291.4,426.4" fill="#FFD6DB" />
+  </g>
 </svg>
