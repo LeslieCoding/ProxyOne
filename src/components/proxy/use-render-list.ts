@@ -107,6 +107,9 @@ const groupOccurrences = <T>(list: T[], size: number): T[][] =>
 
 const CHAIN_DELAY_GROUP = 'chain-mode'
 
+// ProxyOne: 代理页只展示这两个组，订阅里的分流组（Netflix/抖音/Telegram 等）不出现在列表里
+const VISIBLE_RULE_GROUPS = new Set(['节点选择', '自动选择'])
+
 const virtualGroup = (members: ProxyGroupView['members']): ProxyGroupView => ({
   name: CHAIN_DELAY_GROUP,
   type: 'Selector',
@@ -213,7 +216,9 @@ export const useRenderList = (
     if (isChainMode)
       return selectedGroup ? [selectedGroup] : [CHAIN_DELAY_GROUP]
     return mode === 'rule' || mode === 'script'
-      ? proxyView.groups.map(({ name }) => name)
+      ? proxyView.groups
+          .filter(({ name }) => VISIBLE_RULE_GROUPS.has(name))
+          .map(({ name }) => name)
       : proxyView.global
         ? [proxyView.global.name]
         : []
@@ -260,7 +265,7 @@ export const useRenderList = (
 
     const useRule = mode === 'rule' || mode === 'script'
     const renderGroups = useRule
-      ? proxyView.groups
+      ? proxyView.groups.filter(({ name }) => VISIBLE_RULE_GROUPS.has(name))
       : proxyView.global === null
         ? []
         : [proxyView.global]
