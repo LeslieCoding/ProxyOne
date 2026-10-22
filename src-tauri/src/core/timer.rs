@@ -435,9 +435,14 @@ impl Timer {
         // 订阅刷新后顺带自动重测延迟：前端延迟颜色读取 mihomo 的 delay history，
         // 这里只需刷新 history 再通知前端重取即可，全程无需手动点击。
         if is_current {
-            feat::refresh_all_group_delays().await;
-            // 测速完成后自动锁定到延迟最低的 Hysteria 节点（地区不限）
-            feat::auto_select_best_hysteria_node().await;
+            let tested = feat::refresh_all_group_delays().await;
+            // 主分组本轮测速失败时跳过选举：陈旧 history 会做出错误切换决策
+            if tested {
+                // 测速完成后自动锁定到延迟最低的 Hysteria 节点（地区不限）
+                feat::auto_select_best_hysteria_node().await;
+            } else {
+                logging!(warn, Type::Timer, "主分组延迟测试失败，本轮跳过自动选节点");
+            }
         }
     }
 
