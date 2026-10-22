@@ -26,7 +26,11 @@
     "labels": {
       "proxyCount": "节点数量",
       "delayCheckReset": "进行延迟测试，以取消固定",
-      "nodeCount": "{{count}} 个节点"
+      "nodeCount": "{{count}} 个节点",
+      "proxyAutoSelect": "自动选择"
+    },
+    "hints": {
+      "proxyAutoSelect": "自动选择：刷新后切到最优节点；关闭则保持你手选的节点"
     },
     "tooltips": {
       "locate": "当前节点",

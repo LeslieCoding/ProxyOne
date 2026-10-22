@@ -896,6 +896,8 @@ interface IVergeConfig {
   enable_tun_mode?: boolean
   enable_auto_light_weight_mode?: boolean
   auto_light_weight_minutes?: number
+  // 自动选节点总开关：开=刷新订阅+刷新节点后自动切到最优节点；关=保持用户手选（pinned 保护）
+  enable_auto_select?: boolean
   enable_auto_launch?: boolean
   enable_silent_start?: boolean
   enable_system_proxy?: boolean

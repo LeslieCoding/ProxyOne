@@ -1,24 +1,26 @@
 import getSystem from '@/utils/get-system'
 const OS = getSystem()
 
-// default theme setting
+// default (light) theme setting — kept light so explicit "light" mode works
 export const defaultTheme = {
-  primary_color: '#E60012',
-  secondary_color: '#E6A23C',
+  primary_color: '#FF4D4D',
+  secondary_color: '#FFB74D',
   primary_text: '#1D1D1F',
   secondary_text: '#6E6E73',
-  info_color: '#0A84FF',
-  error_color: '#D32F2F',
-  warning_color: '#E6A23C',
-  success_color: '#1FA84F',
+  info_color: '#29B6F6',
+  error_color: '#FF5252',
+  warning_color: '#FFB74D',
+  success_color: '#69F0AE',
   background_color: '#FAFAF9',
   font_family: `-apple-system, BlinkMacSystemFont,"Microsoft YaHei UI", "Microsoft YaHei", Roboto, "Helvetica Neue", Arial, sans-serif, "Apple Color Emoji"${
     OS === 'windows' ? ', twemoji mozilla' : ''
   }`,
 }
 
-// "dark" mode — kept as a light red/white variant so nothing renders near-black
+// "dark" mode — medium dark background (#1A1A1A, not near-black), near-white readable text, bright red accent
 export const defaultDarkTheme = {
   ...defaultTheme,
-  background_color: '#F5F4F2',
+  primary_text: '#FFFFFF',
+  secondary_text: '#B0B0B3',
+  background_color: '#1A1A1A',
 }

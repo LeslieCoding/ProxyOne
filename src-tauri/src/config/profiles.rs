@@ -908,6 +908,15 @@ async fn update_tray_after_activation(generation: u64) {
 pub async fn record_selected_node(group_name: &str, node: &str) -> Result<()> {
     let group_name = String::from(group_name);
     let node = String::from(node);
+    // 手动选择的钉住语义由「自动选择」开关决定：
+    // 开关开（自动模式）时，手选只是临时覆盖——本轮起交回自动，故 pin=false；
+    // 开关关（手动模式）时，手选要钉住保持不被顶回，故 pin=true。
+    // 选了字面「自动选择」节点即显式交还自动，也记 pin=false。
+    let auto_enabled = Config::verge()
+        .await
+        .latest_arc()
+        .enable_auto_select
+        .unwrap_or(true);
     let recorded = Config::profiles()
         .await
         .with_data_modify(move |mut profiles| async move {
@@ -922,8 +931,8 @@ pub async fn record_selected_node(group_name: &str, node: &str) -> Result<()> {
                 return Ok((profiles, false));
             };
 
-            // 手动选择即钉住：选了「自动选择」等于交还给自动逻辑
-            let pin = Some(node.as_str() != "自动选择");
+            // 选了字面「自动选择」节点即显式交还自动，也记 pin=false。
+            let pin = Some(!auto_enabled || node.as_str() == "自动选择");
             let mut selected = item.selected.clone().unwrap_or_default();
             match selected
                 .iter_mut()
@@ -953,40 +962,6 @@ pub async fn record_selected_node(group_name: &str, node: &str) -> Result<()> {
         supersede_selected_activation();
         handle::Handle::refresh_profiles();
     }
-    Ok(())
-}
-
-/// 解除某组的手动钉住（钉住节点消失或超时时由自动选节点逻辑调用，交回自动接管）。
-pub async fn clear_selection_pin(group_name: &str) -> Result<()> {
-    let group_name = String::from(group_name);
-    Config::profiles()
-        .await
-        .with_data_modify(move |mut profiles| async move {
-            let Some(current) = profiles.current.clone() else {
-                return Ok((profiles, false));
-            };
-            let Some(item) = profiles
-                .items
-                .as_mut()
-                .and_then(|items| items.iter_mut().find(|item| item.uid.as_ref() == Some(&current)))
-            else {
-                return Ok((profiles, false));
-            };
-            let Some(entry) = item.selected.as_mut().and_then(|selected| {
-                selected
-                    .iter_mut()
-                    .find(|entry| entry.name.as_ref() == Some(&group_name))
-            }) else {
-                return Ok((profiles, false));
-            };
-            if entry.pinned != Some(true) {
-                return Ok((profiles, false));
-            }
-            entry.pinned = Some(false);
-            profiles.save_file().await?;
-            Ok((profiles, true))
-        })
-        .await?;
     Ok(())
 }
 

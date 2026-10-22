@@ -26,7 +26,11 @@
     "labels": {
       "proxyCount": "Proxy Count",
       "delayCheckReset": "Delay check to cancel fixed",
-      "nodeCount": "{{count}} nodes"
+      "nodeCount": "{{count}} nodes",
+      "proxyAutoSelect": "Auto Select"
+    },
+    "hints": {
+      "proxyAutoSelect": "Auto: switch to best node after refresh. Off: keep your manual selection."
     },
     "tooltips": {
       "locate": "locate",

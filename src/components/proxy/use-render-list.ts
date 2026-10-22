@@ -107,8 +107,9 @@ const groupOccurrences = <T>(list: T[], size: number): T[][] =>
 
 const CHAIN_DELAY_GROUP = 'chain-mode'
 
-// ProxyOne: 代理页只展示这两个组，订阅里的分流组（Netflix/抖音/Telegram 等）不出现在列表里
-const VISIBLE_RULE_GROUPS = new Set(['节点选择', '自动选择'])
+// ProxyOne: 代理页只展示「节点选择」这一组（展示名为「节点列表」），订阅里的分流组（Netflix/抖音/Telegram 等）不出现在列表里。
+// 「自动选择」不再作为列表分组呈现，改由列表顶部的「自动选择」开关控制；该组在 mihomo 内部照常工作。
+const VISIBLE_RULE_GROUPS = new Set(['节点选择'])
 
 const virtualGroup = (members: ProxyGroupView['members']): ProxyGroupView => ({
   name: CHAIN_DELAY_GROUP,

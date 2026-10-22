@@ -168,6 +168,11 @@ pub struct IVerge {
     /// 是否使用内部的脚本支持，默认为真
     pub enable_builtin_enhanced: Option<bool>,
 
+    /// 自动选节点总开关：open 时刷新后自动切换「自动选择」组到最优节点；
+    /// close 时保持用户的选择（pinned 保护），不做自动切换。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub enable_auto_select: Option<bool>,
+
     /// proxy 页面布局 列数
     pub proxy_layout_column: Option<u8>,
 
@@ -436,6 +441,7 @@ impl IVerge {
             auto_check_update: Some(true),
             enable_core_auto_update: Some(true),
             enable_builtin_enhanced: Some(true),
+            enable_auto_select: Some(true),
             auto_log_clean: Some(2), // 1: 1天, 2: 7天, 3: 30天, 4: 90天
             enable_auto_backup_schedule: Some(false),
             auto_backup_interval_hours: Some(24),
@@ -540,6 +546,7 @@ impl IVerge {
         patch!(enable_auto_delay_detection);
         patch!(auto_delay_detection_interval_minutes);
         patch!(enable_builtin_enhanced);
+        patch!(enable_auto_select);
         patch!(proxy_layout_column);
         patch!(test_list);
         patch!(auto_log_clean);

@@ -398,9 +398,13 @@ export interface TranslationResources {
             title: string
           }
         }
+        hints: {
+          proxyAutoSelect: string
+        }
         labels: {
           delayCheckReset: string
           nodeCount: string
+          proxyAutoSelect: string
           proxyCount: string
         }
         messages: {

@@ -134,7 +134,11 @@ export const ProxyRender = memo(function ProxyRender(props: RenderProps) {
               )}
               <ListItemText
                 sx={{ flex: '0 1 auto', minWidth: 0 }}
-                primary={<StyledPrimary>{group.name}</StyledPrimary>}
+                primary={
+                  <StyledPrimary>
+                    {group.name === '节点选择' ? '节点列表' : group.name}
+                  </StyledPrimary>
+                }
                 secondary={
                   <Box
                     sx={{

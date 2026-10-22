@@ -210,6 +210,8 @@ export const translationKeys = [
   'proxies.page.labels.proxyCount',
   'proxies.page.labels.delayCheckReset',
   'proxies.page.labels.nodeCount',
+  'proxies.page.labels.proxyAutoSelect',
+  'proxies.page.hints.proxyAutoSelect',
   'proxies.page.tooltips.locate',
   'proxies.page.tooltips.delayCheck',
   'proxies.page.tooltips.sortDefault',
