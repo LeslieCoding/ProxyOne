@@ -912,11 +912,7 @@ pub async fn record_selected_node(group_name: &str, node: &str) -> Result<()> {
     // 开关开（自动模式）时，手选只是临时覆盖——本轮起交回自动，故 pin=false；
     // 开关关（手动模式）时，手选要钉住保持不被顶回，故 pin=true。
     // 选了字面「自动选择」节点即显式交还自动，也记 pin=false。
-    let auto_enabled = Config::verge()
-        .await
-        .latest_arc()
-        .enable_auto_select
-        .unwrap_or(true);
+    let auto_enabled = Config::verge().await.latest_arc().enable_auto_select.unwrap_or(true);
     let recorded = Config::profiles()
         .await
         .with_data_modify(move |mut profiles| async move {
