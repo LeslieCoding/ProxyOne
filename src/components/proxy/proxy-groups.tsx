@@ -470,14 +470,23 @@ function NormalProxyGroups(props: { mode: string }) {
     },
   })
 
+  // Auto-select (开关 ON，即 enable_auto_select !== false) 开启时，节点列表禁止手选：
+  // 点击直接 return，核心不被改，仍由自动刷新选最优节点。关闭开关后才能手选（pin=true 钉住）。
+  const autoSelectedRef = useRef(true)
+  autoSelectedRef.current =
+    (autoSelectedRef.current ?? true) && !(verge?.enable_auto_select === false)
+
   const handleChangeProxy = useCallback(
     (group: ProxyGroupView, member: ResolvedProxyMember) => {
+      // Auto-select ON (enable_auto_select !== false): block hand selection. Core stays on the
+      // auto-best node. Turn the switch OFF and you can pick again (pin=true so it survives a refresh).
+      if (verge?.enable_auto_select !== false) return
       if (!['Selector', 'URLTest', 'Fallback'].includes(group.type)) return
       if (!isInteractableMember(member)) return
 
       handleProxyGroupChange(group, { name: member.ref.name })
     },
-    [handleProxyGroupChange],
+    [handleProxyGroupChange, verge?.enable_auto_select],
   )
 
   // 滚到对应的节点
