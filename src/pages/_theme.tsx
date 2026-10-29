@@ -3,12 +3,12 @@ const OS = getSystem()
 
 // default (light) theme setting — kept light so explicit "light" mode works
 export const defaultTheme = {
-  primary_color: '#FF4D4D',
+  primary_color: '#E60012',
   secondary_color: '#FFB74D',
   primary_text: '#1D1D1F',
   secondary_text: '#6E6E73',
   info_color: '#29B6F6',
-  error_color: '#FF5252',
+  error_color: '#D32F2F',
   warning_color: '#FFB74D',
   success_color: '#69F0AE',
   background_color: '#FAFAF9',

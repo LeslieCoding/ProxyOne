@@ -202,7 +202,7 @@ export const useCustomTheme = () => {
     const rootEle = document.documentElement
     if (rootEle) {
       const backgroundColor = mode === 'light' ? '#FAFAF9' : '#1A1A1A'
-      const selectColor = '#FF4D4D'
+      const selectColor = '#F5F5F3'
       const scrollColor = '#90939980'
       const dividerColor = 'rgba(255, 255, 255, 0.1)'
       rootEle.style.setProperty('--divider-color', dividerColor)
@@ -214,9 +214,18 @@ export const useCustomTheme = () => {
         '--background-color-alpha',
         alpha(muiTheme.palette.primary.main, 0.1),
       )
-      rootEle.style.setProperty('--window-border-color', mode === 'light' ? '#ECECE8' : '#333333')
-      rootEle.style.setProperty('--scrollbar-bg', mode === 'light' ? '#f1f1f1' : '#2A2A2A')
-      rootEle.style.setProperty('--scrollbar-thumb', mode === 'light' ? '#c1c1c1' : '#4a4a4a')
+      rootEle.style.setProperty(
+        '--window-border-color',
+        mode === 'light' ? '#ECECE8' : '#333333',
+      )
+      rootEle.style.setProperty(
+        '--scrollbar-bg',
+        mode === 'light' ? '#f1f1f1' : '#2A2A2A',
+      )
+      rootEle.style.setProperty(
+        '--scrollbar-thumb',
+        mode === 'light' ? '#c1c1c1' : '#4a4a4a',
+      )
       rootEle.style.setProperty(
         '--user-background-image',
         hasUserBackground ? `url('${userBackgroundImage}')` : 'none',
