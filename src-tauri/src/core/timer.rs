@@ -15,7 +15,7 @@ use std::{
         Arc,
         atomic::{AtomicBool, Ordering},
     },
-    time::Duration,
+    time::{Duration, Instant},
 };
 use tokio::{
     sync::mpsc,
@@ -35,6 +35,8 @@ struct TaskState {
     interval_minutes: u64,
     running: bool,
 }
+
+static LAST_EDGETUNNEL_SCAN: Mutex<Option<Instant>> = Mutex::new(None);
 
 async fn run_timer_profile_update_transition<Started, Update, UpdateFuture, Finished, Completed, Output>(
     update_started: Started,
@@ -404,7 +406,19 @@ impl Timer {
         let task_start = std::time::Instant::now();
         logging!(debug, Type::Timer, "Running timer task for profile: {}", uid);
 
-        let is_current = Config::profiles().await.latest_arc().current.as_ref() == Some(uid);
+        let profiles = Config::profiles().await.latest_arc();
+        let is_current = profiles.current.as_ref() == Some(uid);
+        let profile = profiles.get_item(uid).ok();
+        let is_edgetunnel = is_current
+            && profile
+                .and_then(|item| item.name.as_deref())
+                .is_some_and(|name| name.eq_ignore_ascii_case("edgetunnel"));
+        let now = chrono::Local::now().timestamp() as usize;
+        let should_download = !is_edgetunnel
+            || profile
+                .and_then(|item| item.updated)
+                .is_none_or(|updated| now.saturating_sub(updated) >= 30 * 60);
+        drop(profiles);
         logging!(
             debug,
             Type::Timer,
@@ -413,32 +427,43 @@ impl Timer {
             is_current
         );
 
-        run_timer_profile_update_transition(
-            || Self::emit_update_event(uid, true),
-            || async { feat::update_profile(uid, None, is_current, false, false).await },
-            |result| match result {
-                Ok(_) => {
-                    logging!(
-                        info,
-                        Type::Timer,
-                        "Timer task completed for uid: {} (took {}ms)",
-                        uid,
-                        task_start.elapsed().as_millis()
-                    );
-                }
-                Err(e) => logging_error!(Type::Timer, "Failed to update profile uid {}: {}", uid, e),
-            },
-            || Self::emit_update_event(uid, false),
-        )
-        .await;
+        if should_download {
+            run_timer_profile_update_transition(
+                || Self::emit_update_event(uid, true),
+                || async { feat::update_profile(uid, None, is_current, false, false).await },
+                |result| match result {
+                    Ok(_) => {
+                        logging!(
+                            info,
+                            Type::Timer,
+                            "Timer task completed for uid: {} (took {}ms)",
+                            uid,
+                            task_start.elapsed().as_millis()
+                        );
+                    }
+                    Err(e) => logging_error!(Type::Timer, "Failed to update profile uid {}: {}", uid, e),
+                },
+                || Self::emit_update_event(uid, false),
+            )
+            .await;
+        } else {
+            logging!(debug, Type::Timer, "EdgeTunnel 完整订阅下载未到 30 分钟周期，本轮跳过");
+        }
 
-        // 订阅刷新后顺带自动重测延迟：前端延迟颜色读取 mihomo 的 delay history，
-        // 这里只需刷新 history 再通知前端重取即可，全程无需手动点击。
         if is_current {
-            let tested = feat::refresh_all_group_delays().await;
-            // 主分组本轮测速失败时跳过选举：陈旧 history 会做出错误切换决策
+            let should_full_scan = should_download
+                || LAST_EDGETUNNEL_SCAN
+                    .lock()
+                    .is_none_or(|last| last.elapsed() >= Duration::from_secs(30 * 60));
+            let tested = if !is_edgetunnel || should_full_scan {
+                feat::refresh_all_group_delays().await
+            } else {
+                true
+            };
             if tested {
-                // KTM001 限定 Hysteria；其他订阅按延迟选择境外节点
+                if is_edgetunnel && should_full_scan {
+                    *LAST_EDGETUNNEL_SCAN.lock() = Some(Instant::now());
+                }
                 feat::auto_select_best_node().await;
             } else {
                 logging!(warn, Type::Timer, "主分组延迟测试失败，本轮跳过自动选节点");

@@ -276,13 +276,14 @@ pub async fn auto_select_best_node() {
 
     let profiles = Config::profiles().await.latest_arc();
     let current_uid = profiles.current.as_deref();
+    let current_profile_name = profiles
+        .items
+        .as_ref()
+        .and_then(|items| items.iter().find(|item| item.uid.as_deref() == current_uid))
+        .and_then(|item| item.name.as_deref());
     let is_ktm001 = current_uid.is_some_and(|uid| uid.eq_ignore_ascii_case("ktm001"))
-        || profiles
-            .items
-            .as_ref()
-            .and_then(|items| items.iter().find(|item| item.uid.as_deref() == current_uid))
-            .and_then(|item| item.name.as_deref())
-            .is_some_and(|name| name.eq_ignore_ascii_case("ktm001"));
+        || current_profile_name.is_some_and(|name| name.eq_ignore_ascii_case("ktm001"));
+    let is_edgetunnel = current_profile_name.is_some_and(|name| name.eq_ignore_ascii_case("edgetunnel"));
     drop(profiles);
 
     let mihomo = handle::Handle::mihomo();
@@ -336,7 +337,7 @@ pub async fn auto_select_best_node() {
     };
 
     // history 里 delay=0 表示超时，只从测活成功的目标节点里挑最优
-    let best = all
+    let mut best = all
         .iter()
         .filter(|name| is_target_node(name))
         .filter_map(|name| {
@@ -345,6 +346,65 @@ pub async fn auto_select_best_node() {
                 .map(|delay| (name.clone(), delay))
         })
         .min_by_key(|(_, delay)| *delay);
+
+    if is_edgetunnel {
+        let current_name = group.now.clone().unwrap_or_default();
+        let mut candidates = all
+            .iter()
+            .filter(|name| is_target_node(name))
+            .filter_map(|name| {
+                latest_delay(name)
+                    .filter(|delay| *delay > 0)
+                    .map(|delay| (name.clone(), delay))
+            })
+            .collect::<Vec<_>>();
+        candidates.sort_by_key(|(_, delay)| *delay);
+        candidates.truncate(5);
+        if is_target_node(&current_name) && !candidates.iter().any(|(name, _)| name == &current_name) {
+            candidates.push((
+                current_name,
+                latest_delay(group.now.as_deref().unwrap_or_default()).unwrap_or(0),
+            ));
+        }
+
+        let mut scored = Vec::new();
+        for (name, first_delay) in candidates {
+            let mut samples = Vec::new();
+            if first_delay > 0 {
+                samples.push(first_delay);
+            }
+            for _ in 0..2 {
+                if let Ok(result) = mihomo.delay_proxy_by_name(&name, &test_url, timeout_ms).await
+                    && result.delay > 0
+                {
+                    samples.push(result.delay.min(u32::from(u16::MAX)) as u16);
+                }
+            }
+            if samples.is_empty() {
+                logging!(warn, Type::Timer, "EdgeTunnel 候选 {} 三次复测均失败", name);
+                continue;
+            }
+            samples.sort_unstable();
+            let middle = samples.len() / 2;
+            let median = if samples.len() % 2 == 0 {
+                ((u32::from(samples[middle - 1]) + u32::from(samples[middle])) / 2) as u16
+            } else {
+                samples[middle]
+            };
+            let success = samples.len();
+            logging!(
+                info,
+                Type::Timer,
+                "EdgeTunnel 候选 {} 复测中位数 {}ms，成功 {}/3",
+                name,
+                median,
+                success
+            );
+            scored.push((name, median, success));
+        }
+        scored.sort_by(|a, b| b.2.cmp(&a.2).then_with(|| a.1.cmp(&b.1)));
+        best = scored.into_iter().next().map(|(name, delay, _)| (name, delay));
+    }
 
     let Some((best_name, best_delay)) = best else {
         if group.now.as_deref().is_some_and(is_mainland_china_node_name) && all.iter().any(|name| name == "REJECT") {
@@ -425,7 +485,22 @@ pub async fn auto_select_best_node() {
         CURRENT_TIMEOUT_ROUNDS.store(0, Ordering::Relaxed);
     }
 
-    let need_switch = current_dead || best_delay.saturating_add(HYSTERESIS_MS) < current_delay;
+    let hysteresis_ms = if is_edgetunnel { 50 } else { HYSTERESIS_MS };
+    let min_dwell = if is_edgetunnel {
+        Duration::from_secs(15 * 60)
+    } else {
+        MIN_DWELL
+    };
+    if is_edgetunnel && current_delay >= 800 && best_delay.saturating_mul(2) <= current_delay {
+        current_dead = true;
+    }
+    let need_switch = current_dead
+        || if is_edgetunnel {
+            best_delay.saturating_add(hysteresis_ms) < current_delay
+                && u32::from(best_delay) * 10 <= u32::from(current_delay) * 7
+        } else {
+            best_delay.saturating_add(hysteresis_ms) < current_delay
+        };
 
     if !need_switch {
         logging!(
@@ -440,13 +515,13 @@ pub async fn auto_select_best_node() {
         return;
     }
 
-    // 驻留保护：节点没死、只是别人更快时，需距上次自动切换满 MIN_DWELL 才换，
+    // 驻留保护：节点没死、只是别人更快时，需距上次自动切换满驻留时间才换，
     // 避免测速波动把节点来回拨（每换一次就掐断全部在用连接）。
     if !current_dead {
         let last_switch = LAST_AUTO_SWITCH.lock();
         if let Some(last) = *last_switch {
             let elapsed = last.elapsed();
-            if elapsed < MIN_DWELL {
+            if elapsed < min_dwell {
                 logging!(
                     info,
                     Type::Timer,
@@ -456,7 +531,7 @@ pub async fn auto_select_best_node() {
                     current,
                     current_delay,
                     elapsed.as_secs(),
-                    MIN_DWELL.as_secs()
+                    min_dwell.as_secs()
                 );
                 return;
             }
