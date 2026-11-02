@@ -123,3 +123,86 @@ pub async fn copy_clash_env() {
         logging!(error, Type::ProxyMode, "Failed to write to clipboard");
     }
 }
+
+pub fn is_mainland_china_node_name(name: &str) -> bool {
+    const KEYWORDS: &[&str] = &[
+        "中国",
+        "国内",
+        "大陆",
+        "电信",
+        "联通",
+        "移动",
+        "广电",
+        "铁通",
+        "北京",
+        "上海",
+        "广州",
+        "深圳",
+        "杭州",
+        "南京",
+        "苏州",
+        "成都",
+        "重庆",
+        "武汉",
+        "西安",
+        "天津",
+        "郑州",
+        "长沙",
+        "合肥",
+        "济南",
+        "青岛",
+        "福州",
+        "厦门",
+        "宁波",
+        "无锡",
+        "东莞",
+        "佛山",
+        "珠海",
+        "沈阳",
+        "大连",
+        "哈尔滨",
+        "长春",
+        "石家庄",
+        "太原",
+        "南昌",
+        "昆明",
+        "贵阳",
+        "南宁",
+        "兰州",
+        "银川",
+        "西宁",
+        "乌鲁木齐",
+        "拉萨",
+        "海口",
+    ];
+    let normalized = name.to_lowercase();
+    normalized.contains("china")
+        || normalized.contains("mainland")
+        || normalized.contains("🇨🇳")
+        || normalized
+            .split(|character: char| !character.is_alphanumeric())
+            .any(|token| token == "cn")
+        || KEYWORDS.iter().any(|keyword| normalized.contains(keyword))
+}
+
+#[cfg(test)]
+mod mainland_node_name_tests {
+    use super::is_mainland_china_node_name;
+
+    #[test]
+    fn detects_mainland_names_without_blocking_other_regions_or_cn2_routes() {
+        for name in [
+            "CF电信优选28",
+            "中国移动",
+            "上海 01",
+            "🇨🇳 CN 节点",
+            "China Mobile",
+            "Mainland-01",
+        ] {
+            assert!(is_mainland_china_node_name(name), "{name}");
+        }
+        for name in ["SG新加坡", "香港 01", "澳门 01", "台湾 01", "美国 CN2 GIA", "Tokyo"] {
+            assert!(!is_mainland_china_node_name(name), "{name}");
+        }
+    }
+}

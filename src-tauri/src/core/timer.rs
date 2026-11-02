@@ -438,8 +438,8 @@ impl Timer {
             let tested = feat::refresh_all_group_delays().await;
             // 主分组本轮测速失败时跳过选举：陈旧 history 会做出错误切换决策
             if tested {
-                // 测速完成后自动锁定到延迟最低的 Hysteria 节点（地区不限）
-                feat::auto_select_best_hysteria_node().await;
+                // KTM001 限定 Hysteria；其他订阅按延迟选择境外节点
+                feat::auto_select_best_node().await;
             } else {
                 logging!(warn, Type::Timer, "主分组延迟测试失败，本轮跳过自动选节点");
             }

@@ -17,6 +17,7 @@ use crate::utils::dirs;
 use crate::{
     config::{Config, IProfiles, IVerge, PrfItem},
     constants,
+    feat::is_mainland_china_node_name,
     utils::tmpl,
 };
 use anyhow::{Context as _, Result};
@@ -720,6 +721,34 @@ fn normalize_main_proxy_group(mut config: Mapping) -> Mapping {
     config
 }
 
+fn remove_mainland_nodes_from_groups(mut config: Mapping) -> Mapping {
+    let mut removed = 0usize;
+    if let Some(groups) = config.get_mut("proxy-groups").and_then(Value::as_sequence_mut) {
+        for group in groups.iter_mut().filter_map(Value::as_mapping_mut) {
+            let has_providers = group
+                .get("use")
+                .and_then(Value::as_sequence)
+                .is_some_and(|providers| !providers.is_empty());
+            let mut removed_in_group = 0usize;
+            if let Some(members) = group.get_mut("proxies").and_then(Value::as_sequence_mut) {
+                members.retain(|member| {
+                    let excluded = member.as_str().is_some_and(is_mainland_china_node_name);
+                    removed += usize::from(excluded);
+                    removed_in_group += usize::from(excluded);
+                    !excluded
+                });
+                if members.is_empty() && !has_providers && removed_in_group > 0 {
+                    members.push(Value::from("REJECT"));
+                }
+            }
+        }
+    }
+    if removed > 0 {
+        logging!(info, Type::Core, "已从所有代理组排除 {removed} 个中国大陆节点引用");
+    }
+    config
+}
+
 fn cleanup_proxy_groups(mut config: Mapping) -> Mapping {
     const BUILTIN_POLICIES: &[&str] = &["DIRECT", "REJECT", "REJECT-DROP", "PASS"];
 
@@ -937,6 +966,7 @@ pub async fn enhance(profiles: &IProfiles) -> Result<(Mapping, HashSet<String>, 
     let config = authoritative.enforce(config);
     let config = ensure_lan_bind_address(config);
     let config = normalize_main_proxy_group(config);
+    let config = remove_mainland_nodes_from_groups(config);
 
     let config = cleanup_proxy_groups(config);
     let config = use_sort(config);
@@ -1411,7 +1441,7 @@ mod authoritative_field_tests {
 mod tests {
     use super::{
         ChainItem, ChainType, cleanup_proxy_groups, ensure_lan_bind_address, normalize_main_proxy_group,
-        process_global_items, process_profile_items, use_keys,
+        process_global_items, process_profile_items, remove_mainland_nodes_from_groups, use_keys,
     };
     use std::collections::HashMap;
 
@@ -1952,5 +1982,45 @@ proxy-providers:
                     || !main_group["use"].as_sequence().expect("providers").is_empty()
             );
         }
+    }
+
+    #[test]
+    fn mainland_members_are_removed_from_every_group() {
+        let config = mapping(
+            r#"
+proxy-groups:
+  - {name: "节点选择", type: select, proxies: ["CF电信优选28", "SG新加坡", "香港 01", "美国 CN2 GIA", DIRECT]}
+  - {name: "Auto", type: url-test, proxies: ["中国移动", "台湾 01", DIRECT]}
+  - {name: "DomesticOnly", type: url-test, proxies: ["CF电信优选28", "中国移动"]}
+"#,
+        );
+        let filtered = remove_mainland_nodes_from_groups(config);
+        assert_eq!(
+            filtered["proxy-groups"][0]["proxies"].as_sequence().map(|members| {
+                members
+                    .iter()
+                    .filter_map(serde_yaml_ng::Value::as_str)
+                    .collect::<Vec<_>>()
+            }),
+            Some(vec!["SG新加坡", "香港 01", "美国 CN2 GIA", "DIRECT"])
+        );
+        assert_eq!(
+            filtered["proxy-groups"][1]["proxies"].as_sequence().map(|members| {
+                members
+                    .iter()
+                    .filter_map(serde_yaml_ng::Value::as_str)
+                    .collect::<Vec<_>>()
+            }),
+            Some(vec!["台湾 01", "DIRECT"])
+        );
+        assert_eq!(
+            filtered["proxy-groups"][2]["proxies"].as_sequence().map(|members| {
+                members
+                    .iter()
+                    .filter_map(serde_yaml_ng::Value::as_str)
+                    .collect::<Vec<_>>()
+            }),
+            Some(vec!["REJECT"])
+        );
     }
 }

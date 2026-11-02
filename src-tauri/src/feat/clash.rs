@@ -1,7 +1,7 @@
 use crate::{
     config::{Config, MixedPort},
     core::{CoreManager, handle, tray},
-    feat::clean_async,
+    feat::{clean_async, proxy::is_mainland_china_node_name},
     process::AsyncHandler,
     utils,
 };
@@ -211,11 +211,8 @@ pub async fn refresh_all_group_delays() -> bool {
     all_ok
 }
 
-/// 每次刷新后自动把「节点选择」锁定到延迟最低的 Hysteria 节点。
-///
-/// 2026-10-21 用户改判：不再局限于 🇸🇬 SG新加坡 / 🇯🇵 JP日本 系列，
-/// 任何地区系列均可，只按 Hysteria/Hysteria2 协议过滤（AnyTLS 等其他协议实测慢，排除），
-/// 在测活节点中选延迟最低者。
+/// KTM001 只选 Hysteria/Hysteria2；其他订阅不限协议，按延迟选择。
+/// 所有订阅都排除中国大陆节点，保留既有防抖与故障切换保护。
 ///
 /// 防抖设计（2026-10-22，修 4 小时抖动 7 次的回归）：
 /// 每次 select_node_for_group 都会掐断在用 TCP 连接，切换必须保守：
@@ -225,7 +222,32 @@ pub async fn refresh_all_group_delays() -> bool {
 static LAST_AUTO_SWITCH: parking_lot::Mutex<Option<Instant>> = parking_lot::Mutex::new(None);
 static CURRENT_TIMEOUT_ROUNDS: AtomicU32 = AtomicU32::new(0);
 
-pub async fn auto_select_best_hysteria_node() {
+fn is_proxy_type_allowed(proxy_type: &tauri_plugin_mihomo::models::ProxyType, is_ktm001: bool) -> bool {
+    use tauri_plugin_mihomo::models::ProxyType;
+
+    if is_ktm001 {
+        matches!(proxy_type, ProxyType::Hysteria | ProxyType::Hysteria2)
+    } else {
+        !matches!(
+            proxy_type,
+            ProxyType::Direct
+                | ProxyType::Reject
+                | ProxyType::RejectDrop
+                | ProxyType::Compatible
+                | ProxyType::Pass
+                | ProxyType::PassRule
+                | ProxyType::Dns
+                | ProxyType::Relay
+                | ProxyType::GostRelay
+                | ProxyType::Selector
+                | ProxyType::Fallback
+                | ProxyType::URLTest
+                | ProxyType::LoadBalance
+        )
+    }
+}
+
+pub async fn auto_select_best_node() {
     use tauri_plugin_mihomo::models::ProxyType;
 
     const MAIN_GROUP: &str = "节点选择";
@@ -252,6 +274,17 @@ pub async fn auto_select_best_hysteria_node() {
     let timeout_ms = verge.default_latency_timeout.unwrap_or(5000).clamp(1000, 30000) as u32;
     drop(verge);
 
+    let profiles = Config::profiles().await.latest_arc();
+    let current_uid = profiles.current.as_deref();
+    let is_ktm001 = current_uid.is_some_and(|uid| uid.eq_ignore_ascii_case("ktm001"))
+        || profiles
+            .items
+            .as_ref()
+            .and_then(|items| items.iter().find(|item| item.uid.as_deref() == current_uid))
+            .and_then(|item| item.name.as_deref())
+            .is_some_and(|name| name.eq_ignore_ascii_case("ktm001"));
+    drop(profiles);
+
     let mihomo = handle::Handle::mihomo();
     let proxies = match mihomo.get_proxies().await {
         Ok(proxies) => proxies,
@@ -261,15 +294,15 @@ pub async fn auto_select_best_hysteria_node() {
         }
     };
 
-    // 只按协议过滤：AnyTLS 等其他协议实测慢，排除；地区不限
     let is_target_node = |name: &str| {
-        proxies
-            .proxies
-            .get(name)
-            .is_some_and(|p| matches!(p.proxy_type, ProxyType::Hysteria | ProxyType::Hysteria2))
+        !is_mainland_china_node_name(name)
+            && proxies
+                .proxies
+                .get(name)
+                .is_some_and(|proxy| is_proxy_type_allowed(&proxy.proxy_type, is_ktm001))
     };
 
-    // 主选择分组：优先「节点选择」，兜底取第一个成员含 Hysteria 节点的 Selector
+    // 主选择分组：优先「节点选择」，兜底取第一个含可用境外节点的 Selector
     let group = proxies
         .proxies
         .get(MAIN_GROUP)
@@ -314,11 +347,22 @@ pub async fn auto_select_best_hysteria_node() {
         .min_by_key(|(_, delay)| *delay);
 
     let Some((best_name, best_delay)) = best else {
-        logging!(
-            warn,
-            Type::Timer,
-            "自动选节点：Hysteria 节点当前全部超时或无可用节点，保持现有节点不变"
-        );
+        if group.now.as_deref().is_some_and(is_mainland_china_node_name) && all.iter().any(|name| name == "REJECT") {
+            match mihomo.select_node_for_group(&group.name, "REJECT").await {
+                Ok(_) => {
+                    logging!(warn, Type::Timer, "自动选节点：无可用境外节点，已阻断大陆节点出口");
+                    handle::Handle::refresh_clash();
+                    tray::Tray::global().update_menu_and_icon().await;
+                }
+                Err(err) => logging!(error, Type::Timer, "自动选节点：阻断大陆节点出口失败: {err}"),
+            }
+        } else {
+            logging!(
+                warn,
+                Type::Timer,
+                "自动选节点：符合当前订阅策略的境外节点全部超时或无可用节点，保持现有节点不变"
+            );
+        }
         return;
     };
 
@@ -509,4 +553,40 @@ pub async fn test_delay(url: String) -> anyhow::Result<u32> {
     })
     .await
     .unwrap_or(Ok(10000u32))
+}
+
+#[cfg(test)]
+mod proxy_type_policy_tests {
+    use super::is_proxy_type_allowed;
+    use tauri_plugin_mihomo::models::ProxyType;
+
+    #[test]
+    fn ktm001_keeps_hysteria_only_policy() {
+        assert!(is_proxy_type_allowed(&ProxyType::Hysteria, true));
+        assert!(is_proxy_type_allowed(&ProxyType::Hysteria2, true));
+        assert!(!is_proxy_type_allowed(&ProxyType::Vless, true));
+        assert!(!is_proxy_type_allowed(&ProxyType::AnyTLS, true));
+    }
+
+    #[test]
+    fn other_profiles_allow_concrete_protocols_but_not_groups_or_builtin_policies() {
+        for proxy_type in [
+            ProxyType::Vless,
+            ProxyType::Vmess,
+            ProxyType::Trojan,
+            ProxyType::AnyTLS,
+            ProxyType::Shadowsocks,
+        ] {
+            assert!(is_proxy_type_allowed(&proxy_type, false));
+        }
+        for proxy_type in [
+            ProxyType::Direct,
+            ProxyType::Selector,
+            ProxyType::URLTest,
+            ProxyType::Fallback,
+            ProxyType::LoadBalance,
+        ] {
+            assert!(!is_proxy_type_allowed(&proxy_type, false));
+        }
+    }
 }
