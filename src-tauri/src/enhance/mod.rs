@@ -563,6 +563,163 @@ async fn apply_builtin_scripts(mut config: Mapping, clash_core: Option<String>, 
     config
 }
 
+fn normalize_main_proxy_group(mut config: Mapping) -> Mapping {
+    const MAIN_GROUP: &str = "节点选择";
+
+    let proxy_names = config
+        .get("proxies")
+        .and_then(Value::as_sequence)
+        .map(|proxies| {
+            proxies
+                .iter()
+                .filter_map(|proxy| match proxy {
+                    Value::String(name) => Some(Value::String(name.clone())),
+                    Value::Mapping(map) => map.get("name").and_then(Value::as_str).map(Value::from),
+                    _ => None,
+                })
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    let provider_names = config
+        .get("proxy-providers")
+        .and_then(Value::as_mapping)
+        .map(|providers| providers.keys().cloned().collect::<Vec<_>>())
+        .unwrap_or_default();
+    let has_name_conflict = proxy_names.iter().any(|name| name.as_str() == Some(MAIN_GROUP));
+
+    if let Some(canonical) = config
+        .get_mut("proxy-groups")
+        .and_then(Value::as_sequence_mut)
+        .and_then(|groups| {
+            groups
+                .iter_mut()
+                .find(|group| group.get("name").and_then(Value::as_str) == Some(MAIN_GROUP))
+        })
+        .and_then(Value::as_mapping_mut)
+    {
+        if canonical.get("type").and_then(Value::as_str) == Some("select") {
+            canonical.insert("hidden".into(), false.into());
+        }
+        return config;
+    }
+
+    let groups = config.get("proxy-groups").and_then(Value::as_sequence).cloned();
+    let select_groups = groups
+        .as_ref()
+        .map(|groups| {
+            groups
+                .iter()
+                .enumerate()
+                .filter_map(|(index, group)| {
+                    let map = group.as_mapping()?;
+                    let name = map.get("name").and_then(Value::as_str)?;
+                    let has_members = map
+                        .get("proxies")
+                        .and_then(Value::as_sequence)
+                        .is_some_and(|members| !members.is_empty())
+                        || map
+                            .get("use")
+                            .and_then(Value::as_sequence)
+                            .is_some_and(|providers| !providers.is_empty());
+                    (map.get("type").and_then(Value::as_str) == Some("select") && has_members).then_some((index, name))
+                })
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+
+    fn unique_candidate(mut candidates: Vec<(usize, &str)>) -> Option<(usize, &str)> {
+        if candidates.len() == 1 { candidates.pop() } else { None }
+    }
+    let candidate = unique_candidate(
+        select_groups
+            .iter()
+            .filter(|(_, name)| name.ends_with(MAIN_GROUP))
+            .copied()
+            .collect(),
+    )
+    .or_else(|| {
+        unique_candidate(
+            select_groups
+                .iter()
+                .filter(|(_, name)| name.eq_ignore_ascii_case("proxy"))
+                .copied()
+                .collect(),
+        )
+    })
+    .or_else(|| unique_candidate(select_groups.clone()));
+
+    if let Some((group_index, original_name)) = candidate
+        && !has_name_conflict
+    {
+        let original_name = original_name.to_owned();
+        if let Some(map) = config
+            .get_mut("proxy-groups")
+            .and_then(Value::as_sequence_mut)
+            .and_then(|groups| groups.get_mut(group_index))
+            .and_then(Value::as_mapping_mut)
+        {
+            map.insert("name".into(), MAIN_GROUP.into());
+            map.insert("hidden".into(), false.into());
+        }
+        if let Some(groups) = config.get_mut("proxy-groups").and_then(Value::as_sequence_mut) {
+            for group in groups.iter_mut().filter_map(Value::as_mapping_mut) {
+                if let Some(members) = group.get_mut("proxies").and_then(Value::as_sequence_mut) {
+                    for member in members {
+                        if member.as_str() == Some(original_name.as_str()) {
+                            *member = MAIN_GROUP.into();
+                        }
+                    }
+                }
+            }
+        }
+        if let Some(rules) = config.get_mut("rules").and_then(Value::as_sequence_mut) {
+            for rule in rules {
+                let Some(rule_text) = rule.as_str().map(str::to_owned) else {
+                    continue;
+                };
+                let mut fields = rule_text.split(',').map(str::to_owned).collect::<Vec<_>>();
+                let target_index = match fields.first().map(|field| field.as_str()) {
+                    Some("MATCH") => 1,
+                    Some("SUB-RULES") => continue,
+                    _ => 2,
+                };
+                if fields
+                    .get(target_index)
+                    .is_some_and(|field| field.trim() == original_name)
+                {
+                    fields[target_index] = fields[target_index].replace(&original_name, MAIN_GROUP);
+                    *rule = fields.join(",").into();
+                }
+            }
+        }
+        logging!(
+            info,
+            Type::Core,
+            "订阅主分组 `{original_name}` 已规范化为 `{MAIN_GROUP}`"
+        );
+        return config;
+    }
+
+    if has_name_conflict || (proxy_names.is_empty() && provider_names.is_empty()) {
+        return config;
+    }
+    let mut main_group = Mapping::new();
+    main_group.insert("name".into(), MAIN_GROUP.into());
+    main_group.insert("type".into(), "select".into());
+    main_group.insert("hidden".into(), false.into());
+    main_group.insert("proxies".into(), Value::Sequence(proxy_names));
+    if !provider_names.is_empty() {
+        main_group.insert("use".into(), Value::Sequence(provider_names));
+    }
+    config
+        .entry("proxy-groups".into())
+        .or_insert_with(|| Value::Sequence(Vec::new()))
+        .as_sequence_mut()
+        .map(|groups| groups.push(Value::Mapping(main_group)));
+    logging!(info, Type::Core, "订阅没有明确主选择分组，已生成 `{MAIN_GROUP}`");
+    config
+}
+
 fn cleanup_proxy_groups(mut config: Mapping) -> Mapping {
     const BUILTIN_POLICIES: &[&str] = &["DIRECT", "REJECT", "REJECT-DROP", "PASS"];
 
@@ -779,6 +936,7 @@ pub async fn enhance(profiles: &IProfiles) -> Result<(Mapping, HashSet<String>, 
     // 手动覆盖后恢复 app 权威字段。
     let config = authoritative.enforce(config);
     let config = ensure_lan_bind_address(config);
+    let config = normalize_main_proxy_group(config);
 
     let config = cleanup_proxy_groups(config);
     let config = use_sort(config);
@@ -1252,8 +1410,8 @@ mod authoritative_field_tests {
 #[cfg(test)]
 mod tests {
     use super::{
-        ChainItem, ChainType, cleanup_proxy_groups, ensure_lan_bind_address, process_global_items,
-        process_profile_items, use_keys,
+        ChainItem, ChainType, cleanup_proxy_groups, ensure_lan_bind_address, normalize_main_proxy_group,
+        process_global_items, process_profile_items, use_keys,
     };
     use std::collections::HashMap;
 
@@ -1646,5 +1804,153 @@ proxy-groups:
             .expect("proxies should be a sequence");
         assert_eq!(proxies.len(), 1);
         assert_eq!(proxies[0].as_str(), Some("DIRECT"));
+    }
+
+    #[test]
+    fn decorated_main_group_is_normalized_with_all_references() {
+        let config = mapping(
+            r#"
+proxies:
+  - name: node-a
+    type: ss
+proxy-groups:
+  - name: "🚀 节点选择"
+    type: select
+    hidden: true
+    proxies: [node-a]
+  - name: "🐟 漏网之鱼"
+    type: select
+    proxies: ["🚀 节点选择", DIRECT]
+rules:
+  - "DOMAIN-SUFFIX,anthropic.com,🚀 节点选择"
+  - "MATCH,🚀 节点选择"
+"#,
+        );
+
+        let normalized = normalize_main_proxy_group(config);
+        let groups = normalized
+            .get("proxy-groups")
+            .and_then(serde_yaml_ng::Value::as_sequence)
+            .expect("groups should be a sequence");
+        let main_group = groups
+            .iter()
+            .filter_map(serde_yaml_ng::Value::as_mapping)
+            .find(|group| group.get("name").and_then(serde_yaml_ng::Value::as_str) == Some("节点选择"))
+            .expect("canonical main group should exist");
+        assert_eq!(
+            main_group.get("hidden").and_then(serde_yaml_ng::Value::as_bool),
+            Some(false)
+        );
+        assert!(
+            !groups
+                .iter()
+                .any(|group| { group.get("name").and_then(serde_yaml_ng::Value::as_str) == Some("🚀 节点选择") })
+        );
+        assert_eq!(
+            groups[1]
+                .get("proxies")
+                .and_then(serde_yaml_ng::Value::as_sequence)
+                .map(|members| {
+                    members
+                        .iter()
+                        .filter_map(serde_yaml_ng::Value::as_str)
+                        .collect::<Vec<_>>()
+                }),
+            Some(vec!["节点选择", "DIRECT"])
+        );
+        assert_eq!(
+            normalized
+                .get("rules")
+                .and_then(serde_yaml_ng::Value::as_sequence)
+                .map(|rules| {
+                    rules
+                        .iter()
+                        .filter_map(serde_yaml_ng::Value::as_str)
+                        .collect::<Vec<_>>()
+                }),
+            Some(vec!["DOMAIN-SUFFIX,anthropic.com,节点选择", "MATCH,节点选择"])
+        );
+        assert_eq!(normalize_main_proxy_group(normalized.clone()), normalized);
+    }
+
+    #[test]
+    fn existing_main_group_is_made_visible() {
+        let existing = mapping(
+            r#"
+proxy-groups:
+  - {name: "节点选择", type: select, hidden: true, proxies: [node-a]}
+"#,
+        );
+        let normalized = normalize_main_proxy_group(existing);
+        assert_eq!(normalized["proxy-groups"][0]["hidden"].as_bool(), Some(false));
+    }
+
+    #[test]
+    fn common_proxy_name_is_normalized() {
+        let config = mapping(
+            r#"
+proxy-groups:
+  - {name: "Proxy", type: select, proxies: [node-a]}
+rules: ["MATCH,Proxy"]
+"#,
+        );
+        let normalized = normalize_main_proxy_group(config);
+        assert_eq!(normalized["proxy-groups"][0]["name"].as_str(), Some("节点选择"));
+        assert_eq!(normalized["rules"][0].as_str(), Some("MATCH,节点选择"));
+    }
+
+    #[test]
+    fn ambiguous_groups_fall_back_to_top_level_members() {
+        let config = mapping(
+            r#"
+proxies: [{name: node-a, type: ss}, {name: node-b, type: ss}]
+proxy-providers:
+  provider-a: {type: http, url: "https://example.com", path: ./provider-a.yaml}
+proxy-groups:
+  - {name: "🚀 节点选择", type: select, proxies: [node-a]}
+  - {name: "备用节点选择", type: select, proxies: [node-b]}
+"#,
+        );
+        let normalized = normalize_main_proxy_group(config);
+        let groups = normalized["proxy-groups"].as_sequence().expect("groups");
+        let main_group = groups
+            .iter()
+            .filter_map(serde_yaml_ng::Value::as_mapping)
+            .find(|group| group.get("name").and_then(serde_yaml_ng::Value::as_str) == Some("节点选择"))
+            .expect("generated main group");
+        assert_eq!(main_group["proxies"].as_sequence().map(Vec::len), Some(2));
+        assert_eq!(main_group["use"].as_sequence().map(Vec::len), Some(1));
+        assert_eq!(groups.len(), 3);
+    }
+
+    #[test]
+    fn missing_main_group_is_created_without_select_groups() {
+        for config_str in [
+            r#"proxies: [{name: node-a, type: ss}]"#,
+            r#"
+proxies: [{name: node-a, type: ss}]
+proxy-groups:
+  - {name: "Auto", type: url-test, proxies: [node-a]}
+"#,
+            r#"
+proxy-providers:
+  provider-a: {type: http, url: "https://example.com", path: ./provider-a.yaml}
+"#,
+        ] {
+            let normalized = normalize_main_proxy_group(mapping(config_str));
+            let main_group = normalized["proxy-groups"]
+                .as_sequence()
+                .expect("groups")
+                .iter()
+                .filter_map(serde_yaml_ng::Value::as_mapping)
+                .find(|group| group.get("name").and_then(serde_yaml_ng::Value::as_str) == Some("节点选择"))
+                .expect("generated main group");
+            assert_eq!(main_group["name"].as_str(), Some("节点选择"));
+            assert_eq!(main_group["type"].as_str(), Some("select"));
+            assert!(
+                !main_group["proxies"].as_sequence().expect("proxies").is_empty()
+                    || !main_group["use"].as_sequence().expect("providers").is_empty()
+            );
+        }
     }
 }
